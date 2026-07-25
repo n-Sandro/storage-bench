@@ -35,11 +35,12 @@ ihn beim ersten Aufruf automatisch an.
 5. [Subcommand: compare](#subcommand-compare)
 6. [Subcommand: watch](#subcommand-watch--messung-während-eines-umschwenks)
 7. [Subcommand: report](#subcommand-report--html-report-mit-diagrammen)
-8. [Aufräumverhalten & --force](#aufräumverhalten----force)
-9. [Alle Ergebnisdateien im Überblick](#alle-ergebnisdateien-im-überblick)
-10. [Empfohlene Abläufe](#empfohlene-abläufe)
-11. [Interna für Anpassungen](#interna-für-anpassungen-generate-reportpy--report-templatehtml)
-12. [Bekannte Grenzen](#bekannte-grenzen)
+8. [Berechnung der Kennzahlen](#berechnung-der-kennzahlen)
+9. [Aufräumverhalten & --force](#aufräumverhalten----force)
+10. [Alle Ergebnisdateien im Überblick](#alle-ergebnisdateien-im-überblick)
+11. [Empfohlene Abläufe](#empfohlene-abläufe)
+12. [Interna für Anpassungen](#interna-für-anpassungen-generate-reportpy--report-templatehtml)
+13. [Bekannte Grenzen](#bekannte-grenzen)
 
 ---
 
@@ -366,6 +367,55 @@ offline.
 per Ctrl-C mitten im Schreiben der fio-Ausgabe unterbrochen wurde) lässt den
 Report nicht abstürzen — die Datei wird mit einer Warnung auf stderr übersprungen,
 der Rest des Labels bzw. der übrigen Labels wird trotzdem ausgewertet.
+
+---
+
+## Berechnung der Kennzahlen
+
+Alle Werte (Terminal, `summary.csv`, `report.html`) kommen aus **derselben Quelle**
+— den vier fio-Rohwerten in `<test>.json` unter `.jobs[0].read.*` bzw.
+`.jobs[0].write.*` — und durchlaufen dieselben zwei Umrechnungen, nur mit
+unterschiedlicher Rundung je nach Ausgabestelle:
+
+| Rohwert (fio-JSON) | Einheit | Umrechnung | Ergebnis |
+|---|---|---|---|
+| `.bw` | KiB/s | `/ 1024` | MB/s¹ |
+| `.iops` | IOPS | – (keine Umrechnung) | IOPS |
+| `.clat_ns.mean` | Nanosekunden | `/ 1000000` | Ø-Latenz in ms |
+| `.clat_ns.percentile["99.000000"]` | Nanosekunden | `/ 1000000` | p99-Latenz in ms |
+
+¹ Streng genommen MiB/s (Division durch 1024, nicht 1000) — im gesamten Skript
+und Report aus Lesbarkeit als "MB/s" bezeichnet.
+
+**Drei unabhängige Konsumenten derselben Formel, unterschiedlich gerundet:**
+
+1. **Terminal-Ausgabe** (`parse_metric()`, von `run` am Ende gedruckt): BW und
+   IOPS ganzzahlig gerundet, Latenzwerte auf 2 Nachkommastellen (`(...)*100|round/100`
+   — der `jq`-Trick, um auf 2 Dezimalstellen zu runden, da `jq` kein natives
+   `round(n)` mit Nachkommastellen kennt).
+2. **`summary.csv`** (`csv_metric_values()`): **exakt dieselben Formeln, aber
+   ungerundet** — bewusst andere Rundung als das Terminal, damit die CSV für
+   Weiterverarbeitung/eigene Auswertung nicht durch Rundungsfehler verfälscht wird.
+3. **`report.html`**: zweistufig gerundet — `generate-report.py` rundet beim Bau
+   von `window.__REPORT_DATA__` (BW auf 2, IOPS auf 1, Latenzwerte auf 3
+   Nachkommastellen), das Template rundet beim Anzeigen nochmal (Durchsatz-Diagramm
+   0, Latenz-Diagramm 2 Nachkommastellen; Rohdaten-Tabelle: Latenzspalten
+   `toFixed(2)`, BW/IOPS-Spalten unverändert aus den schon von Python gerundeten
+   Werten).
+
+**Konkret für "Mischlast 70/30 — Lesen":** Quelle ist `.jobs[0].read.*` aus
+`mixed_70r_30w.json` — dieselben vier Formeln wie oben, angewandt auf die
+Lese-Hälfte der Job-Statistik (siehe [Sonderfall `mixed_70r_30w`](#subcommand-run)
+weiter oben: ein Job, aber read/write werden von fio getrennt gezählt). Keine
+zusätzliche 70/30-Rechnung nötig — die Aufteilung hat fio schon während des Laufs
+selbst umgesetzt, indem es tatsächlich ~70% Lese- und ~30% Schreibanfragen
+ausgeführt hat; die Auswertung liest nur die bereits getrennten Ergebnisse ab.
+
+**`compare`s Delta-Berechnung** (separat, nur Bandbreite): `awk` rechnet
+`((bw_after - bw_before) / bw_before) * 100` mit voller Genauigkeit auf den rohen
+KiB/s-Werten (macht rechnerisch keinen Unterschied zu MB/s, da es ein Verhältnis
+ist), das Ergebnis wird erst danach auf 1 Nachkommastelle gerundet (`printf
+"%.1f"`). REGRESSION-Schwelle: `delta_pct < -10`.
 
 ---
 
