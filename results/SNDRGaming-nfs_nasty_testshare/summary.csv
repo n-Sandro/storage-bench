@@ -1,9 +1,0 @@
-label,test,direction,bw_MBps,iops,avg_lat_ms,p99_lat_ms
-SNDRGaming-nfs_nasty_testshare,latency_read,read,0.7265625,186.214712,5.367655540183001,11.599872
-SNDRGaming-nfs_nasty_testshare,latency_write,write,0.65234375,167.144381,5.9802556819540005,13.43488
-SNDRGaming-nfs_nasty_testshare,mixed_70r_30w,read,4.9248046875,1260.223048,20.815806300933,114.819072
-SNDRGaming-nfs_nasty_testshare,mixed_70r_30w,write,2.103515625,538.264325,9.468296115652,14.614528
-SNDRGaming-nfs_nasty_testshare,rand_read_iops,read,4.9130859375,1253.706099,101.866543558757,350.224384
-SNDRGaming-nfs_nasty_testshare,rand_write_iops,write,6.83203125,1745.003970,73.178255891176,274.726912
-SNDRGaming-nfs_nasty_testshare,seq_read,read,21.7333984375,20.744902,1506.966236268721,2399.141888
-SNDRGaming-nfs_nasty_testshare,seq_write,write,19.6640625,18.675180,1666.171085370129,2499.805184
