@@ -150,6 +150,14 @@ Führt sieben fio-Teiltests nacheinander aus und legt die Ergebnisse unter
 | `latency_read` / `latency_write` | `bs=4k, iodepth=1, ioengine=psync` | Reine Latenz ohne Queue-Effekte |
 | `mixed_70r_30w` | `bs=4k, rwmixread=70, iodepth=16, numjobs=2` | Realistische Mischlast (z.B. DB-artig) |
 
+**Sonderfall `mixed_70r_30w`:** Anders als die anderen drei Zeilen — die jeweils
+*zwei separate* fio-Jobs sind (`seq_read` und `seq_write` sind zwei komplett
+unabhängige Läufe, ebenso rand/latency) — ist `mixed_70r_30w` **ein einziger**
+fio-Job, der gleichzeitig liest und schreibt. Report und Diagramme zeigen dafür
+trotzdem zwei Zeilen ("Mischlast 70/30 — Lesen" / "— Schreiben"), damit sich die
+Lese- und Schreibrichtung genauso vergleichen lässt wie bei den anderen Tests —
+das sind aber Lese-/Schreib-Ergebnisse *aus demselben Lauf*, nicht zwei Läufe.
+
 Alle Tests laufen mit `--direct=1` (Page-Cache wird umgangen, damit reale
 Gerätewerte gemessen werden) und einer **fest eingestellten Rampe von 5 Sekunden**
 (`--ramp_time=5`, nicht per Flag änderbar) vor jedem Teiltest — fio misst währenddessen
