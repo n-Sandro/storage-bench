@@ -80,7 +80,15 @@
   header.report-head {
     display: flex; flex-direction: column; gap: 10px;
     border-bottom: 1px solid var(--border); padding-bottom: 24px;
+    position: relative;
   }
+  .theme-toggle {
+    position: absolute; top: 0; right: 0;
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px;
+    font-size: 15px; cursor: pointer; line-height: 1; padding: 0;
+  }
+  .theme-toggle:hover { border-color: var(--ink-muted); }
   .eyebrow {
     font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
     font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
@@ -206,6 +214,7 @@
   <div class="page">
 
     <header class="report-head">
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Farbschema umschalten"></button>
       <div class="eyebrow">storage-bench.sh · run + compare</div>
       <h1 id="report-h1">Storage-Benchmark</h1>
       <div class="meta-row" id="meta-row"></div>
@@ -326,6 +335,28 @@
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
   }
+
+  // Theme-Umschalter: das CSS unterstützt data-theme="light"/"dark" auf <html>
+  // schon seit längerem als expliziten Override der OS-Einstellung (siehe die
+  // @media/[data-theme]-Blöcke oben) — hier nur der fehlende Button dazu, der
+  // dieses Attribut setzt. Kein Speichern in localStorage: bewusst einfach
+  // gehalten, jeder frische Aufruf startet wieder bei der OS-Einstellung.
+  const themeToggle = document.getElementById('theme-toggle');
+  function currentTheme() {
+    const explicit = document.documentElement.getAttribute('data-theme');
+    if (explicit) return explicit;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function updateThemeToggleIcon() {
+    const isDark = currentTheme() === 'dark';
+    themeToggle.textContent = isDark ? '🌙' : '☀️';
+    themeToggle.setAttribute('aria-label', isDark ? 'Zu hellem Farbschema wechseln' : 'Zu dunklem Farbschema wechseln');
+  }
+  themeToggle.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', currentTheme() === 'dark' ? 'light' : 'dark');
+    updateThemeToggleIcon();
+  });
+  updateThemeToggleIcon();
 
   document.getElementById('report-h1').textContent =
     'Storage-Benchmark: ' + LOCS.map(l => l.label).join(' · ');
