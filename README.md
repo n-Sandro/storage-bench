@@ -13,11 +13,16 @@ und alles als HTML-Report mit Diagrammen darstellen.
 | `report-template.html` | Layout/CSS/JS-Vorlage für den Report (Platzhalter, die `generate-report.py` befüllt) |
 | `results/` | Alle Ergebnisse, ein Unterordner pro `--label` plus Vergleichs- und Report-Dateien auf oberster Ebene |
 
-Alle drei Skripte liegen nebeneinander in `~/storage-bench/`. `generate-report.py`
-und `report-template.html` müssen im selben Verzeichnis wie `storage-bench.sh`
-bleiben, da der Pfad relativ zum Skript aufgelöst wird (`$SCRIPT_DIR`) — das
-Verzeichnis selbst kann beliebig verschoben werden (z.B. für einen Umzug auf einen
-anderen Server), ohne dass Code angepasst werden muss.
+Alle drei Skripte liegen nebeneinander im selben Verzeichnis (dieses Repo, z.B.
+`~/projects/storage-bench/`). `generate-report.py` und `report-template.html`
+müssen im selben Verzeichnis wie `storage-bench.sh` bleiben, da der Pfad relativ
+zum Skript aufgelöst wird (`$SCRIPT_DIR`) — das Verzeichnis selbst kann beliebig
+verschoben oder per `git clone` auf einen anderen Server kopiert werden, ohne
+dass Code angepasst werden muss.
+
+`results/` ist per `.gitignore` **nicht** Teil des Git-Repos — das sind Messdaten,
+kein Code. Nach einem frischen `git clone` existiert der Ordner nicht; `run` legt
+ihn beim ersten Aufruf automatisch an.
 
 ---
 
@@ -146,7 +151,11 @@ Führt sieben fio-Teiltests nacheinander aus und legt die Ergebnisse unter
 | `mixed_70r_30w` | `bs=4k, rwmixread=70, iodepth=16, numjobs=2` | Realistische Mischlast (z.B. DB-artig) |
 
 Alle Tests laufen mit `--direct=1` (Page-Cache wird umgangen, damit reale
-Gerätewerte gemessen werden).
+Gerätewerte gemessen werden) und einer **fest eingestellten Rampe von 5 Sekunden**
+(`--ramp_time=5`, nicht per Flag änderbar) vor jedem Teiltest — fio misst währenddessen
+mit, wertet diese Anlaufphase aber nicht in Durchsatz/Latenz/IOPS. Ein Teiltest
+dauert dadurch real `--runtime` + 5s, auch wenn nur `--runtime` in den Ergebnissen
+auftaucht. Bei `watch` gibt es keine Rampe (ein einziger durchgehender Job).
 
 **Beispiele:**
 
@@ -174,6 +183,7 @@ Gerätewerte gemessen werden).
 | `--ioengine <engine>` | `libaio` | fio-I/O-Engine |
 | `--force` | aus | Vorhandenes Label überschreiben (Ordner wird vollständig geleert) |
 | `--dry-run` | aus | Nur simulieren |
+| `-h`, `--help` | – | Hilfe anzeigen und beenden |
 
 **Ergebnisdateien** unter `results/<label>/`:
 - je Teiltest ein `<test>.json` (fio-Rohdaten) und `<test>.log`
@@ -256,6 +266,7 @@ ein durchgehender Messlauf ohne Lücken, plus unabhängige Ausfallerkennung.
 | `--ioengine <engine>` | `libaio` | fio-I/O-Engine für den Hauptjob |
 | `--force` | aus | Vorhandenes Label überschreiben (Ordner wird vollständig geleert) |
 | `--dry-run` | aus | Nur simulieren |
+| `-h`, `--help` | – | Hilfe anzeigen und beenden |
 
 **Ergebnisdateien** unter `results/<label>/`: `watch.log` (fio-Endstatistik),
 `watch-status.log` (Live-Status-Verlauf), `<label>_lat.1.log` (Completion-Latenz-
@@ -311,18 +322,27 @@ offline.
    egal welche Labels man übergibt.
 3. **Farb-Legende** — ein Swatch pro Label, feste Reihenfolge aus einer
    farbenblind-sicher validierten Palette (max. 8 Labels gleichzeitig, danach müsste
-   die Palette erweitert werden).
-4. **Glossar** (aufklappbar) — erklärt BW, IOPS, Ø-Latenz, p99-Latenz, Queue Depth
-   und `direct=1`, sowie jede tatsächlich im Report enthaltene Testart in
-   Klartext. Nur die Begriffe, die auch vorkommen.
+   die Palette erweitert werden). **Klickbar:** ein Klick auf eine Kachel blendet
+   dieses Verzeichnis in beiden Diagrammen aus (Kachel wird abgeblendet, Skala
+   rechnet sich neu auf die verbliebenen sichtbaren Werte) und filtert gleichzeitig
+   die Umschalter der Vergleichstabelle — ein Paar verschwindet dort aus der
+   Auswahl, sobald eines seiner beiden Labels ausgeblendet ist. Nützlich, um einen
+   extremen Ausreißer (z.B. eine viel langsamere Freigabe) kurzzeitig aus der Skala
+   zu nehmen, damit die übrigen Werte besser vergleichbar werden.
+4. **Zwei getrennte Glossar-Bereiche** (aufklappbar, nebeneinander ab ausreichender
+   Fensterbreite) — "Was bedeuten die Kennzahlen?" (BW, IOPS, Ø-Latenz, p99-Latenz,
+   Queue Depth, `direct=1`, `ioengine` sync/async) und "Was wird hier getestet?"
+   (Klartext-Erklärung jeder tatsächlich im Report enthaltenen Testart, jeder
+   Eintrag für sich verständlich). Nur die Begriffe/Testarten, die auch vorkommen.
 5. **Zwei Diagramme** (Durchsatz, Latenz) — horizontale Balken, logarithmische
    Skala (nötig, da Werte über mehrere Größenordnungen streuen können), mit
    Hover-Tooltip und direkt angeschriebenem Exaktwert neben jedem Balken.
 6. **Vergleichstabelle** — falls passende `compare_<a>_vs_<b>.csv`-Dateien für die
-   übergebenen Labels existieren, als Umschalter (Buttons) zwischen den
-   Label-Paaren, mit Delta-Balken und REGRESSION/OK-Pills. Fehlen compare-Läufe,
-   zeigt der Report einen Hinweis mit dem passenden `compare`-Befehl statt eines
-   Fehlers.
+   übergebenen (und aktuell nicht über die Legende ausgeblendeten) Labels
+   existieren, als Umschalter (Buttons) zwischen den Label-Paaren, mit
+   Delta-Balken und REGRESSION/OK-Pills. Fehlen compare-Läufe komplett, zeigt der
+   Report einen Hinweis mit dem passenden `compare`-Befehl; sind alle passenden
+   Paare gerade über die Legende ausgeblendet, ein separater Hinweis dafür.
 7. **Testparameter** (aufklappbar) — eine Zeile pro Testart mit den tatsächlich
    verwendeten fio-Optionen (`rw`, `bs`, `iodepth`, `numjobs`, `ioengine`, `size`,
    `direct`, `runtime`, `ramp_time`), direkt aus den "job options" im fio-JSON
@@ -529,7 +549,14 @@ Nur relevant, wenn du den Report selbst erweitern willst.
 - **`NAME_MAP`** / **`TEST_GLOSSARY`** / **`METRIC_GLOSSARY`**: Klartext-Namen und
   -Erklärungen für Testarten bzw. Kennzahlen. Neue fio-Teiltests im Hauptskript
   brauchen hier einen zusätzlichen Eintrag, sonst erscheinen sie im Report nur mit
-  ihrem internen Test-Key statt Klartext.
+  ihrem internen Test-Key statt Klartext. Jeder `TEST_GLOSSARY`-Eintrag muss für
+  sich verständlich sein (kein "Wie X, nur schreibend") — man kann direkt zu einem
+  einzelnen Eintrag springen, ohne die anderen gelesen zu haben.
+- **`hiddenLocs`** (Template-JS): Set der über die Legende ausgeblendeten
+  Verzeichnis-Keys. `renderCharts()` und `renderCompareSection()` sind eigene
+  Funktionen (nicht nur einmalige Inline-Blöcke), genau damit sie bei jedem
+  Legende-Klick neu aufgerufen werden können, statt den Report einmalig beim Laden
+  zu rendern.
 - **Farbskalen der Diagramme** sind logarithmisch und werden pro Diagramm
   dynamisch aus den tatsächlich vorkommenden Werten berechnet (`computeBounds()`
   im Template-JS) — kein hartkodiertes Minimum/Maximum.
