@@ -20,10 +20,6 @@ zum Skript aufgelöst wird (`$SCRIPT_DIR`) — das Verzeichnis selbst kann belie
 verschoben oder per `git clone` auf einen anderen Server kopiert werden, ohne
 dass Code angepasst werden muss.
 
-`results/` ist per `.gitignore` **nicht** Teil des Git-Repos — das sind Messdaten,
-kein Code. Nach einem frischen `git clone` existiert der Ordner nicht; `run` legt
-ihn beim ersten Aufruf automatisch an.
-
 ---
 
 ## Inhaltsverzeichnis
