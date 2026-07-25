@@ -37,10 +37,9 @@ ihn beim ersten Aufruf automatisch an.
 7. [Subcommand: report](#subcommand-report--html-report-mit-diagrammen)
 8. [Aufräumverhalten & --force](#aufräumverhalten----force)
 9. [Alle Ergebnisdateien im Überblick](#alle-ergebnisdateien-im-überblick)
-10. [Report anzeigen ohne Server/Claude](#report-anzeigen-ohne-serverclaude)
-11. [Empfohlene Abläufe](#empfohlene-abläufe)
-12. [Interna für Anpassungen](#interna-für-anpassungen-generate-reportpy--report-templatehtml)
-13. [Bekannte Grenzen](#bekannte-grenzen)
+10. [Empfohlene Abläufe](#empfohlene-abläufe)
+11. [Interna für Anpassungen](#interna-für-anpassungen-generate-reportpy--report-templatehtml)
+12. [Bekannte Grenzen](#bekannte-grenzen)
 
 ---
 
@@ -447,34 +446,6 @@ results/
 ├── combined_summary.csv                   ← optional von Hand zusammengeführt
 │                                             (siehe Beispiel-Workflow unten)
 └── report.html                            ← von `report`
-```
-
----
-
-## Report anzeigen ohne Server/Claude
-
-`report.html` ist eine reine, in sich geschlossene Datei (Style + Daten + JS alles
-inline) — jeder Browser öffnet sie direkt als lokale Datei (`file://`), ganz ohne
-HTTP-Server.
-
-**Von einem entfernten Server herunterladen und lokal öffnen:**
-```bash
-scp user@server:/pfad/zu/results/report.html .
-xdg-open report.html   # oder: open report.html (macOS), Doppelklick
-```
-
-**Über VSCode Remote-SSH:** Rechtsklick auf `report.html` im Explorer → **Download**,
-dann lokal öffnen. Mit der Extension **„Live Preview"** rendert VSCode die Datei
-sogar direkt im Editor-Tab, ohne Download.
-
-**Ad-hoc über SSH-Tunnel ansehen, ohne die Datei zu kopieren** (nutzt `python3`,
-das für `report` ohnehin gebraucht wird):
-```bash
-# auf dem Server, im results/-Verzeichnis:
-python3 -m http.server 8000
-# lokal:
-ssh -L 8080:localhost:8000 user@server
-# dann lokal im Browser: http://localhost:8080/report.html
 ```
 
 ---
