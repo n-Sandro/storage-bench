@@ -1,0 +1,678 @@
+<!--
+  Vorlage für storage-bench.sh report / generate-report.py.
+  Storage-Benchmark: SNDRGaming-nfs_nasty_testshare, SNDRGaming-tmp, --series-1: #2a78d6;
+    --series-2: #eb6834;, --series-1: #3987e5;
+      --series-2: #d95926; und
+  {"glossary": {"metrics": [["BW (MB/s)", "Durchsatz — Megabyte pro Sekunde, die gelesen bzw. geschrieben wurden."], ["IOPS", "Input/Output Operations per Second — Anzahl einzelner I/O-Vorgänge pro Sekunde. Bei kleinen Blockgrößen (4K) oft aussagekräftiger als reine Bandbreite."], ["Ø Lat. (ms)", "Durchschnittliche Zeit von Anfrage bis Antwort (Completion Latency) pro I/O-Vorgang."], ["p99 Lat. (ms)", "99. Perzentil der Latenz — 99% aller Anfragen waren schneller als dieser Wert. Zeigt Ausreißer, die ein reiner Durchschnitt verschleiert."], ["QD (Queue Depth)", "Anzahl gleichzeitig ausstehender I/O-Anfragen. QD=1 = seriell, eine nach der anderen. QD=32 = 32 parallele Anfragen — realistischer für moderne SSDs/NVMe und Multi-User-Workloads."], ["direct=1 (O_DIRECT)", "Alle Tests umgehen den Linux-Seiten-Cache und greifen direkt auf das Gerät zu — sonst würden die Werte teils nur RAM-Geschwindigkeit statt echter Storage-Performance zeigen."], ["ioengine (sync/async)", "Wie fio Anfragen an den Kernel stellt. Synchron (psync): blockierender read()/write()-Aufruf, wartet auf die Antwort, bevor die nächste Anfrage rausgeht — eine nach der anderen, auch über mehrere Prozesse (numjobs) hinweg jeweils für sich. Asynchron (libaio): Anfrage wird abgeschickt, ohne auf die Antwort zu warten — mehrere können so aus einem einzigen Prozess gleichzeitig offen sein (iodepth), ohne dafür mehrere Prozesse zu brauchen. Die Latenz-Tests nutzen bewusst psync statt libaio: auch eine asynchrone Engine hat bei iodepth=1 noch eigenen Verwaltungs-Overhead (Einreihen, später aus der Completion-Queue abholen) — psync misst ohne diesen Umweg."]], "tests": [{"term": "Latenz Lesen (QD1)", "desc": "Kleine 4K-Blöcke werden einzeln gelesen, mit iodepth=1 und synchroner Engine (psync) statt einer asynchronen — nie mehr als eine Anfrage gleichzeitig unterwegs, nichts wird gepuffert oder überlappt. Gemessen wird die reine Tür-zu-Tür-Zeit einer einzelnen Anfrage in ms; die MB/s im Durchsatz-Diagramm sind hier ein Nebenprodukt, kein aussagekräftiger Wert. Wichtig für Workloads, die nicht parallelisieren können."}, {"term": "Latenz Schreiben (QD1)", "desc": "Kleine 4K-Blöcke werden einzeln geschrieben, mit iodepth=1 und synchroner Engine (psync) statt einer asynchronen — nie mehr als eine Anfrage gleichzeitig unterwegs, nichts wird gepuffert oder überlappt. Gemessen wird die reine Tür-zu-Tür-Zeit einer einzelnen Schreibanfrage in ms; die MB/s im Durchsatz-Diagramm sind hier ein Nebenprodukt, kein aussagekräftiger Wert. Wichtig für Workloads, die nicht parallelisieren können."}, {"term": "Mischlast 70/30", "desc": "70% Lese-, 30% Schreibanfragen gleichzeitig, mit iodepth=16 über 2 parallele Prozesse (32 gleichzeitig ausstehende Anfragen insgesamt) — simuliert einen realistischeren Anwendungsfall als reine Lese- oder Schreibtests, z.B. eine Datenbank, die gleichzeitig liest und schreibt."}, {"term": "Random Lesen (QD32)", "desc": "Kleine 4K-Blöcke werden an zufälligen Positionen gelesen, mit hoher Parallelität: 32 Anfragen gleichzeitig über 4 parallele Prozesse (numjobs=4), macht 128 gleichzeitig ausstehende Anfragen insgesamt. Misst, wie viele einzelne Leseoperationen pro Sekunde möglich sind, wenn viele Anfragen gleichzeitig unterwegs sein dürfen — relevant für Datenbanken oder viele gleichzeitige Nutzer, nicht für die Größe der einzelnen Anfrage."}, {"term": "Random Schreiben (QD32)", "desc": "Kleine 4K-Blöcke werden an zufälligen Positionen geschrieben, mit hoher Parallelität: 32 Anfragen gleichzeitig über 4 parallele Prozesse (numjobs=4), macht 128 gleichzeitig ausstehende Anfragen insgesamt. Misst, wie viele einzelne Schreiboperationen pro Sekunde möglich sind, wenn viele Anfragen gleichzeitig unterwegs sein dürfen — relevant für Datenbanken oder viele gleichzeitige Nutzer, nicht für die Größe der einzelnen Anfrage."}, {"term": "Sequenziell Lesen", "desc": "Große 1M-Blöcke werden der Reihe nach gelesen, mit 32 gleichzeitig ausstehenden Anfragen über eine asynchrone Engine (libaio) — fio hält das Storage konstant beschäftigt, statt auf jede einzelne Antwort zu warten. Misst die maximale Durchsatzgrenze bei großen, zusammenhängenden Zugriffen — relevant z.B. für Backups oder große Dateiübertragungen, wo die Anfragegröße zählt, nicht die Anzahl der Zugriffe."}, {"term": "Sequenziell Schreiben", "desc": "Große 1M-Blöcke werden der Reihe nach geschrieben, mit 32 gleichzeitig ausstehenden Anfragen über eine asynchrone Engine (libaio) — fio hält das Storage konstant beschäftigt, statt auf jede einzelne Antwort zu warten. Misst die maximale Durchsatzgrenze bei großen, zusammenhängenden Schreibzugriffen — relevant z.B. für Backups oder große Dateiübertragungen, wo die Anfragegröße zählt, nicht die Anzahl der Zugriffe."}]}, "meta": {"fio_version": "fio-3.36", "generated": "2026-07-25 15:25", "labels": ["SNDRGaming-nfs_nasty_testshare", "SNDRGaming-tmp"]}, "locations": [{"key": "SNDRGaming-nfs_nasty_testshare", "label": "SNDRGaming-nfs_nasty_testshare", "color": "var(--series-1)"}, {"key": "SNDRGaming-tmp", "label": "SNDRGaming-tmp", "color": "var(--series-2)"}], "tests": [{"key": "latency_read", "dir": "read", "label": "Latenz Lesen (QD1)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 0.73, "iops": 186.2, "lat": 5.368, "p99": 11.6}, "SNDRGaming-tmp": {"bw": 29.65, "iops": 7589.8, "lat": 0.13, "p99": 0.167}}}, {"key": "latency_write", "dir": "write", "label": "Latenz Schreiben (QD1)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 0.65, "iops": 167.1, "lat": 5.98, "p99": 13.435}, "SNDRGaming-tmp": {"bw": 35.62, "iops": 9117.8, "lat": 0.108, "p99": 0.144}}}, {"key": "mixed_70r_30w", "dir": "read", "label": "Mischlast 70/30 — Lesen", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 4.92, "iops": 1260.2, "lat": 20.816, "p99": 114.819}, "SNDRGaming-tmp": {"bw": 439.24, "iops": 112445.0, "lat": 0.216, "p99": 0.444}}}, {"key": "mixed_70r_30w", "dir": "write", "label": "Mischlast 70/30 — Schreiben", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 2.1, "iops": 538.3, "lat": 9.468, "p99": 14.615}, "SNDRGaming-tmp": {"bw": 188.27, "iops": 48196.9, "lat": 0.15, "p99": 0.305}}}, {"key": "rand_read_iops", "dir": "read", "label": "Random Lesen (QD32)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 4.91, "iops": 1253.7, "lat": 101.867, "p99": 350.224}, "SNDRGaming-tmp": {"bw": 1293.22, "iops": 331061.0, "lat": 0.384, "p99": 0.717}}}, {"key": "rand_write_iops", "dir": "write", "label": "Random Schreiben (QD32)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 6.83, "iops": 1745.0, "lat": 73.178, "p99": 274.727}, "SNDRGaming-tmp": {"bw": 1323.84, "iops": 338898.5, "lat": 0.375, "p99": 1.057}}}, {"key": "seq_read", "dir": "read", "label": "Sequenziell Lesen", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 21.73, "iops": 20.7, "lat": 1506.966, "p99": 2399.142}, "SNDRGaming-tmp": {"bw": 6907.48, "iops": 6906.4, "lat": 4.609, "p99": 6.914}}}, {"key": "seq_write", "dir": "write", "label": "Sequenziell Schreiben", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 19.66, "iops": 18.7, "lat": 1666.171, "p99": 2499.805}, "SNDRGaming-tmp": {"bw": 5549.93, "iops": 5548.9, "lat": 5.728, "p99": 24.248}}}], "raw": [["SNDRGaming-nfs_nasty_testshare", "Latenz Lesen (QD1)", "read", 0.73, 186.2, 5.368, 11.6], ["SNDRGaming-tmp", "Latenz Lesen (QD1)", "read", 29.65, 7589.8, 0.13, 0.167], ["SNDRGaming-nfs_nasty_testshare", "Latenz Schreiben (QD1)", "write", 0.65, 167.1, 5.98, 13.435], ["SNDRGaming-tmp", "Latenz Schreiben (QD1)", "write", 35.62, 9117.8, 0.108, 0.144], ["SNDRGaming-nfs_nasty_testshare", "Mischlast 70/30 — Lesen", "read", 4.92, 1260.2, 20.816, 114.819], ["SNDRGaming-tmp", "Mischlast 70/30 — Lesen", "read", 439.24, 112445.0, 0.216, 0.444], ["SNDRGaming-nfs_nasty_testshare", "Mischlast 70/30 — Schreiben", "write", 2.1, 538.3, 9.468, 14.615], ["SNDRGaming-tmp", "Mischlast 70/30 — Schreiben", "write", 188.27, 48196.9, 0.15, 0.305], ["SNDRGaming-nfs_nasty_testshare", "Random Lesen (QD32)", "read", 4.91, 1253.7, 101.867, 350.224], ["SNDRGaming-tmp", "Random Lesen (QD32)", "read", 1293.22, 331061.0, 0.384, 0.717], ["SNDRGaming-nfs_nasty_testshare", "Random Schreiben (QD32)", "write", 6.83, 1745.0, 73.178, 274.727], ["SNDRGaming-tmp", "Random Schreiben (QD32)", "write", 1323.84, 338898.5, 0.375, 1.057], ["SNDRGaming-nfs_nasty_testshare", "Sequenziell Lesen", "read", 21.73, 20.7, 1506.966, 2399.142], ["SNDRGaming-tmp", "Sequenziell Lesen", "read", 6907.48, 6906.4, 4.609, 6.914], ["SNDRGaming-nfs_nasty_testshare", "Sequenziell Schreiben", "write", 19.66, 18.7, 1666.171, 2499.805], ["SNDRGaming-tmp", "Sequenziell Schreiben", "write", 5549.93, 5548.9, 5.728, 24.248]], "paramsCommon": [{"test": "Latenz Lesen (QD1)", "values": {"rw": "randread", "bs": "4k", "iodepth": "1", "numjobs": "1", "ioengine": "psync", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Latenz Schreiben (QD1)", "values": {"rw": "randwrite", "bs": "4k", "iodepth": "1", "numjobs": "1", "ioengine": "psync", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Mischlast 70/30", "values": {"rw": "randrw", "bs": "4k", "iodepth": "16", "numjobs": "2", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Random Lesen (QD32)", "values": {"rw": "randread", "bs": "4k", "iodepth": "32", "numjobs": "4", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Random Schreiben (QD32)", "values": {"rw": "randwrite", "bs": "4k", "iodepth": "32", "numjobs": "4", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Sequenziell Lesen", "values": {"rw": "read", "bs": "1M", "iodepth": "32", "numjobs": "1", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Sequenziell Schreiben", "values": {"rw": "write", "bs": "1M", "iodepth": "32", "numjobs": "1", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}], "paramsDeviations": [], "paramFields": ["rw", "bs", "iodepth", "numjobs", "ioengine", "size", "direct", "runtime", "ramp_time"], "compares": {"SNDRGaming-nfs_nasty_testshare → SNDRGaming-tmp": [["latency_read", "read", 0.7, 29.6, 3980.5, false], ["latency_write", "write", 0.7, 35.6, 5359.7, false], ["mixed_70r_30w", "read", 4.9, 439.2, 8819.0, false], ["mixed_70r_30w", "write", 2.1, 188.3, 8850.2, false], ["rand_read_iops", "read", 4.9, 1293.2, 26222.0, false], ["rand_write_iops", "write", 6.8, 1323.8, 19276.9, false], ["seq_read", "read", 21.7, 6907.5, 31682.8, false], ["seq_write", "write", 19.7, 5549.9, 28123.7, false]], "SNDRGaming-tmp → SNDRGaming-nfs_nasty_testshare": [["latency_read", "read", 29.6, 0.7, -97.5, true], ["latency_write", "write", 35.6, 0.7, -98.2, true], ["mixed_70r_30w", "read", 439.2, 4.9, -98.9, true], ["mixed_70r_30w", "write", 188.3, 2.1, -98.9, true], ["rand_read_iops", "read", 1293.2, 4.9, -99.6, true], ["rand_write_iops", "write", 1323.8, 6.8, -99.5, true], ["seq_read", "read", 6907.5, 21.7, -99.7, true], ["seq_write", "write", 5549.9, 19.7, -99.6, true]]}, "stats": [{"value": "317.9×", "crit": true, "label": "Größter Unterschied — Sequenziell Lesen", "detail": "22 – 6907 MB/s"}, {"value": "40.62×", "crit": false, "label": "Kleinster Unterschied — Latenz Lesen (QD1)", "detail": "1 – 30 MB/s"}, {"value": "2", "crit": false, "label": "Getestete Verzeichnisse", "detail": "/mnt/nfs_nasty_testshare, /tmp"}], "callParams": {"deviates": false, "size": "4G", "runtime": "30s", "ioengine": "libaio", "direct": "1"}, "footer": "<div>CSV-Dateien: <code>SNDRGaming-nfs_nasty_testshare/summary.csv<\/code> · <code>SNDRGaming-tmp/summary.csv<\/code> · <code>compare_SNDRGaming-nfs_nasty_testshare_vs_SNDRGaming-tmp.csv<\/code> · <code>compare_SNDRGaming-tmp_vs_SNDRGaming-nfs_nasty_testshare.csv<\/code><\/div><div>Erzeugt mit generate-report.py aus storage-bench.sh-Ergebnissen (2026-07-25 15:25).<\/div>"} sind Platzhalter, die generate-report.py per simplem
+  String-Replace ersetzt (kein Templating-Framework). Alles Rendern (Diagramme,
+  Legende, Glossar, Tabellen) passiert unten im <script> ausschließlich aus dem
+  eingesetzten window.__REPORT_DATA__-JSON — diese Datei selbst kennt keine
+  konkreten Testnamen oder Verzeichnisse.
+-->
+<title>Storage-Benchmark: SNDRGaming-nfs_nasty_testshare, SNDRGaming-tmp</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page:            #f9f9f7;
+    --surface-1:       #fcfcfb;
+    --ink-primary:     #0b0b0b;
+    --ink-secondary:   #52514e;
+    --ink-muted:       #898781;
+    --grid:            #e1e0d9;
+    --baseline:        #c3c2b7;
+    --border:          rgba(11,11,11,0.10);
+    --status-critical: #d03b3b;
+    --status-good:     #006300;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+  }
+  /* Dark-Werte doppelt: einmal für die OS-Einstellung (prefers-color-scheme),
+     einmal für einen manuellen Theme-Umschalter der Seite (data-theme="dark").
+     Der data-theme-Block muss beide Male exakt dieselben Werte wie der
+     Media-Query-Block tragen, damit ein manueller Umschalter die OS-Einstellung
+     in beide Richtungen übersteuern kann. */
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page:            #0d0d0d;
+      --surface-1:       #1a1a19;
+      --ink-primary:     #ffffff;
+      --ink-secondary:   #c3c2b7;
+      --ink-muted:       #898781;
+      --grid:            #2c2c2a;
+      --baseline:        #383835;
+      --border:          rgba(255,255,255,0.10);
+      --status-critical: #d03b3b;
+      --status-good:     #0ca30c;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page:            #0d0d0d;
+    --surface-1:       #1a1a19;
+    --ink-primary:     #ffffff;
+    --ink-secondary:   #c3c2b7;
+    --ink-muted:       #898781;
+    --grid:            #2c2c2a;
+    --baseline:        #383835;
+    --border:          rgba(255,255,255,0.10);
+    --status-critical: #d03b3b;
+    --status-good:     #0ca30c;
+    --series-1: #3987e5;
+      --series-2: #d95926;
+  }
+
+  * { box-sizing: border-box; }
+
+  .viz-root {
+    background: var(--page);
+    color: var(--ink-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    padding: clamp(20px, 4vw, 56px);
+    min-height: 100vh;
+  }
+
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+
+  header.report-head {
+    display: flex; flex-direction: column; gap: 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 24px;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-secondary); }
+  .meta-row span { white-space: nowrap; }
+  .meta-row b { color: var(--ink-primary); font-weight: 600; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .stat-tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .stat-value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat-value.crit { color: var(--status-critical); }
+  .stat-label { font-size: 13px; color: var(--ink-secondary); }
+  .stat-detail { font-size: 12px; color: var(--ink-muted); }
+
+  .param-grid { display: flex; flex-direction: column; gap: 6px; margin: 2px 0; }
+  .param-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: 13px; }
+  .param-key { color: var(--ink-muted); }
+  .param-val { color: var(--ink-primary); font-weight: 600; white-space: nowrap; }
+
+  .legend-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .legend-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 14px 6px 10px; font-size: 13px;
+    font-family: inherit; color: inherit; cursor: pointer; appearance: none;
+    transition: opacity 0.12s ease;
+  }
+  .legend-chip:hover { border-color: var(--ink-muted); }
+  .legend-chip.inactive { opacity: 0.4; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .legend-chip .name { font-weight: 600; }
+
+  section.panel {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px clamp(16px, 3vw, 28px) 28px;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  h2 { margin: 0; font-size: 17px; font-weight: 700; }
+  .panel-note { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 18px; max-width: 66ch; }
+  .axis-caption { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.03em; }
+
+  .chart-cols { display: grid; grid-template-columns: 1fr; gap: 28px; }
+  @media (min-width: 920px) { .chart-cols { grid-template-columns: 1fr 1fr; } }
+
+  .bar-group { margin-bottom: 18px; }
+  .bar-group:last-child { margin-bottom: 0; }
+  .bar-group-label { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--ink-primary); }
+  .bar-row { display: grid; grid-template-columns: 72px 1fr 78px; align-items: center; gap: 8px; height: 18px; margin-bottom: 2px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-loc { font-size: 11px; color: var(--ink-secondary); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { position: relative; height: 100%; border-bottom: 1px solid var(--grid); }
+  .bar-fill { position: absolute; left: 0; top: 2px; bottom: 2px; border-radius: 0 4px 4px 0; min-width: 3px; cursor: default; transition: filter 0.12s ease; }
+  .bar-fill:hover { filter: brightness(1.12); }
+  .bar-value { font-size: 11px; color: var(--ink-secondary); white-space: nowrap; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; background: var(--ink-primary); color: var(--surface-1);
+    font-size: 12px; padding: 6px 10px; border-radius: 6px; z-index: 50; opacity: 0;
+    transform: translate(-50%, -130%); transition: opacity 0.08s ease; white-space: nowrap;
+  }
+  #tooltip.show { opacity: 1; }
+  #tooltip b { font-family: ui-monospace, monospace; }
+
+  .compare-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px; flex-wrap: wrap; }
+  .compare-toggle button { font: inherit; font-size: 12.5px; padding: 7px 14px; background: transparent; color: var(--ink-secondary); border: none; cursor: pointer; }
+  .compare-toggle button + button { border-left: 1px solid var(--border); }
+  .compare-toggle button[aria-pressed="true"] { background: var(--ink-primary); color: var(--surface-1); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--baseline);
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+  td.num, th.num { text-align: right; font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .delta-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .delta-bar-track { width: 90px; height: 6px; background: var(--grid); border-radius: 3px; position: relative; overflow: hidden; }
+  .delta-bar-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .pill.crit { background: color-mix(in srgb, var(--status-critical) 16%, transparent); color: var(--status-critical); }
+  .pill.ok { background: color-mix(in srgb, var(--status-good) 16%, transparent); color: var(--status-good); }
+
+  .table-scroll { overflow-x: auto; }
+  .empty-note { font-size: 13px; color: var(--ink-muted); }
+
+  .glossary-cols { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 920px) { .glossary-cols { grid-template-columns: 1fr 1fr; } }
+
+  .glossary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px 24px;
+    align-items: start;
+  }
+  .glossary-item { display: flex; flex-direction: column; gap: 2px; }
+  .glossary-term { font-size: 12.5px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .glossary-desc { font-size: 12.5px; color: var(--ink-secondary); line-height: 1.45; }
+  .glossary-subhead {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-muted); margin: 0 0 8px; grid-column: 1 / -1;
+  }
+
+  details.raw-table summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 4px 0; color: var(--ink-secondary); }
+  details.raw-table summary:hover { color: var(--ink-primary); }
+  details.raw-table[open] summary { margin-bottom: 12px; }
+
+  footer { border-top: 1px solid var(--border); padding-top: 18px; font-size: 12px; color: var(--ink-muted); display: flex; flex-direction: column; gap: 4px; }
+  footer code { font-family: ui-monospace, monospace; background: var(--grid); padding: 1px 6px; border-radius: 4px; color: var(--ink-secondary); }
+
+  a { color: inherit; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar-fill, .compare-toggle button { transition: none; }
+  }
+</style>
+
+<div class="viz-root">
+  <div class="page">
+
+    <header class="report-head">
+      <div class="eyebrow">storage-bench.sh · run + compare</div>
+      <h1 id="report-h1">Storage-Benchmark</h1>
+      <div class="meta-row" id="meta-row"></div>
+    </header>
+
+    <div class="stat-row" id="stat-row"></div>
+
+    <div class="legend-row" id="legend"></div>
+
+    <div class="glossary-cols">
+      <details class="raw-table" id="glossary-metrics-section">
+        <summary>Was bedeuten die Kennzahlen?</summary>
+        <div class="glossary-grid" id="glossary-metrics"></div>
+      </details>
+
+      <details class="raw-table" id="glossary-tests-section">
+        <summary>Was wird hier getestet?</summary>
+        <div class="glossary-grid" id="glossary-tests"></div>
+      </details>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Durchsatz &amp; Latenz nach Testart</h2>
+        <span class="axis-caption">logarithmische Skala — Balkenlänge ≠ linear proportional, exakte Werte rechts</span>
+      </div>
+      <p class="panel-note">
+        Jeder Block zeigt einen Balken pro getestetem Verzeichnis (Reihenfolge wie Legende oben).
+        Werte kommen direkt aus den fio-JSON-Ergebnissen von <code class="mono">storage-bench.sh run</code>.
+      </p>
+      <div class="chart-cols">
+        <div>
+          <div class="axis-caption" style="margin-bottom:10px">DURCHSATZ (MB/s)</div>
+          <div id="chart-bw"></div>
+        </div>
+        <div>
+          <div class="axis-caption" style="margin-bottom:10px">Ø LATENZ (ms)</div>
+          <div id="chart-lat"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="compare-section">
+      <div class="panel-head"><h2>Vergleich (compare)</h2></div>
+      <p class="panel-note">
+        Automatisch erzeugt von <code class="mono">storage-bench.sh compare</code>. Regression = Bandbreiten-Rückgang &gt; 10 %.
+      </p>
+      <div id="compare-body"></div>
+    </section>
+
+    <details class="raw-table">
+      <summary>Testparameter (fio-Optionen je Testart)</summary>
+      <p class="panel-note">
+        Direkt aus den "job options" der fio-JSON-Ergebnisse gelesen. Einmal pro Testart,
+        da diese Parameter über alle Labels normalerweise identisch sind — weicht ein
+        Label ab (z.B. anderes <code class="mono">ioengine</code> oder <code class="mono">size</code>),
+        steht das separat unten und würde einen Vergleich mit diesem Label verfälschen.
+      </p>
+      <div class="table-scroll">
+        <table id="params-table">
+          <thead>
+            <tr id="params-head"></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="params-deviations" style="margin-top:14px"></div>
+    </details>
+
+    <details class="raw-table">
+      <summary>Vollständige Rohdaten (Tabellenansicht)</summary>
+      <div class="table-scroll">
+        <table id="raw-table">
+          <thead>
+            <tr>
+              <th>Verzeichnis</th><th>Test</th><th>Richtung</th>
+              <th class="num">BW (MB/s)</th><th class="num">IOPS</th>
+              <th class="num">Ø Lat. (ms)</th><th class="num">p99 Lat. (ms)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
+
+    <footer id="report-footer"></footer>
+
+  </div>
+</div>
+
+<div id="tooltip" class="mono"></div>
+
+<script>
+  window.__REPORT_DATA__ = {"glossary": {"metrics": [["BW (MB/s)", "Durchsatz — Megabyte pro Sekunde, die gelesen bzw. geschrieben wurden."], ["IOPS", "Input/Output Operations per Second — Anzahl einzelner I/O-Vorgänge pro Sekunde. Bei kleinen Blockgrößen (4K) oft aussagekräftiger als reine Bandbreite."], ["Ø Lat. (ms)", "Durchschnittliche Zeit von Anfrage bis Antwort (Completion Latency) pro I/O-Vorgang."], ["p99 Lat. (ms)", "99. Perzentil der Latenz — 99% aller Anfragen waren schneller als dieser Wert. Zeigt Ausreißer, die ein reiner Durchschnitt verschleiert."], ["QD (Queue Depth)", "Anzahl gleichzeitig ausstehender I/O-Anfragen. QD=1 = seriell, eine nach der anderen. QD=32 = 32 parallele Anfragen — realistischer für moderne SSDs/NVMe und Multi-User-Workloads."], ["direct=1 (O_DIRECT)", "Alle Tests umgehen den Linux-Seiten-Cache und greifen direkt auf das Gerät zu — sonst würden die Werte teils nur RAM-Geschwindigkeit statt echter Storage-Performance zeigen."], ["ioengine (sync/async)", "Wie fio Anfragen an den Kernel stellt. Synchron (psync): blockierender read()/write()-Aufruf, wartet auf die Antwort, bevor die nächste Anfrage rausgeht — eine nach der anderen, auch über mehrere Prozesse (numjobs) hinweg jeweils für sich. Asynchron (libaio): Anfrage wird abgeschickt, ohne auf die Antwort zu warten — mehrere können so aus einem einzigen Prozess gleichzeitig offen sein (iodepth), ohne dafür mehrere Prozesse zu brauchen. Die Latenz-Tests nutzen bewusst psync statt libaio: auch eine asynchrone Engine hat bei iodepth=1 noch eigenen Verwaltungs-Overhead (Einreihen, später aus der Completion-Queue abholen) — psync misst ohne diesen Umweg."]], "tests": [{"term": "Latenz Lesen (QD1)", "desc": "Kleine 4K-Blöcke werden einzeln gelesen, mit iodepth=1 und synchroner Engine (psync) statt einer asynchronen — nie mehr als eine Anfrage gleichzeitig unterwegs, nichts wird gepuffert oder überlappt. Gemessen wird die reine Tür-zu-Tür-Zeit einer einzelnen Anfrage in ms; die MB/s im Durchsatz-Diagramm sind hier ein Nebenprodukt, kein aussagekräftiger Wert. Wichtig für Workloads, die nicht parallelisieren können."}, {"term": "Latenz Schreiben (QD1)", "desc": "Kleine 4K-Blöcke werden einzeln geschrieben, mit iodepth=1 und synchroner Engine (psync) statt einer asynchronen — nie mehr als eine Anfrage gleichzeitig unterwegs, nichts wird gepuffert oder überlappt. Gemessen wird die reine Tür-zu-Tür-Zeit einer einzelnen Schreibanfrage in ms; die MB/s im Durchsatz-Diagramm sind hier ein Nebenprodukt, kein aussagekräftiger Wert. Wichtig für Workloads, die nicht parallelisieren können."}, {"term": "Mischlast 70/30", "desc": "70% Lese-, 30% Schreibanfragen gleichzeitig, mit iodepth=16 über 2 parallele Prozesse (32 gleichzeitig ausstehende Anfragen insgesamt) — simuliert einen realistischeren Anwendungsfall als reine Lese- oder Schreibtests, z.B. eine Datenbank, die gleichzeitig liest und schreibt."}, {"term": "Random Lesen (QD32)", "desc": "Kleine 4K-Blöcke werden an zufälligen Positionen gelesen, mit hoher Parallelität: 32 Anfragen gleichzeitig über 4 parallele Prozesse (numjobs=4), macht 128 gleichzeitig ausstehende Anfragen insgesamt. Misst, wie viele einzelne Leseoperationen pro Sekunde möglich sind, wenn viele Anfragen gleichzeitig unterwegs sein dürfen — relevant für Datenbanken oder viele gleichzeitige Nutzer, nicht für die Größe der einzelnen Anfrage."}, {"term": "Random Schreiben (QD32)", "desc": "Kleine 4K-Blöcke werden an zufälligen Positionen geschrieben, mit hoher Parallelität: 32 Anfragen gleichzeitig über 4 parallele Prozesse (numjobs=4), macht 128 gleichzeitig ausstehende Anfragen insgesamt. Misst, wie viele einzelne Schreiboperationen pro Sekunde möglich sind, wenn viele Anfragen gleichzeitig unterwegs sein dürfen — relevant für Datenbanken oder viele gleichzeitige Nutzer, nicht für die Größe der einzelnen Anfrage."}, {"term": "Sequenziell Lesen", "desc": "Große 1M-Blöcke werden der Reihe nach gelesen, mit 32 gleichzeitig ausstehenden Anfragen über eine asynchrone Engine (libaio) — fio hält das Storage konstant beschäftigt, statt auf jede einzelne Antwort zu warten. Misst die maximale Durchsatzgrenze bei großen, zusammenhängenden Zugriffen — relevant z.B. für Backups oder große Dateiübertragungen, wo die Anfragegröße zählt, nicht die Anzahl der Zugriffe."}, {"term": "Sequenziell Schreiben", "desc": "Große 1M-Blöcke werden der Reihe nach geschrieben, mit 32 gleichzeitig ausstehenden Anfragen über eine asynchrone Engine (libaio) — fio hält das Storage konstant beschäftigt, statt auf jede einzelne Antwort zu warten. Misst die maximale Durchsatzgrenze bei großen, zusammenhängenden Schreibzugriffen — relevant z.B. für Backups oder große Dateiübertragungen, wo die Anfragegröße zählt, nicht die Anzahl der Zugriffe."}]}, "meta": {"fio_version": "fio-3.36", "generated": "2026-07-25 15:25", "labels": ["SNDRGaming-nfs_nasty_testshare", "SNDRGaming-tmp"]}, "locations": [{"key": "SNDRGaming-nfs_nasty_testshare", "label": "SNDRGaming-nfs_nasty_testshare", "color": "var(--series-1)"}, {"key": "SNDRGaming-tmp", "label": "SNDRGaming-tmp", "color": "var(--series-2)"}], "tests": [{"key": "latency_read", "dir": "read", "label": "Latenz Lesen (QD1)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 0.73, "iops": 186.2, "lat": 5.368, "p99": 11.6}, "SNDRGaming-tmp": {"bw": 29.65, "iops": 7589.8, "lat": 0.13, "p99": 0.167}}}, {"key": "latency_write", "dir": "write", "label": "Latenz Schreiben (QD1)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 0.65, "iops": 167.1, "lat": 5.98, "p99": 13.435}, "SNDRGaming-tmp": {"bw": 35.62, "iops": 9117.8, "lat": 0.108, "p99": 0.144}}}, {"key": "mixed_70r_30w", "dir": "read", "label": "Mischlast 70/30 — Lesen", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 4.92, "iops": 1260.2, "lat": 20.816, "p99": 114.819}, "SNDRGaming-tmp": {"bw": 439.24, "iops": 112445.0, "lat": 0.216, "p99": 0.444}}}, {"key": "mixed_70r_30w", "dir": "write", "label": "Mischlast 70/30 — Schreiben", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 2.1, "iops": 538.3, "lat": 9.468, "p99": 14.615}, "SNDRGaming-tmp": {"bw": 188.27, "iops": 48196.9, "lat": 0.15, "p99": 0.305}}}, {"key": "rand_read_iops", "dir": "read", "label": "Random Lesen (QD32)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 4.91, "iops": 1253.7, "lat": 101.867, "p99": 350.224}, "SNDRGaming-tmp": {"bw": 1293.22, "iops": 331061.0, "lat": 0.384, "p99": 0.717}}}, {"key": "rand_write_iops", "dir": "write", "label": "Random Schreiben (QD32)", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 6.83, "iops": 1745.0, "lat": 73.178, "p99": 274.727}, "SNDRGaming-tmp": {"bw": 1323.84, "iops": 338898.5, "lat": 0.375, "p99": 1.057}}}, {"key": "seq_read", "dir": "read", "label": "Sequenziell Lesen", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 21.73, "iops": 20.7, "lat": 1506.966, "p99": 2399.142}, "SNDRGaming-tmp": {"bw": 6907.48, "iops": 6906.4, "lat": 4.609, "p99": 6.914}}}, {"key": "seq_write", "dir": "write", "label": "Sequenziell Schreiben", "values": {"SNDRGaming-nfs_nasty_testshare": {"bw": 19.66, "iops": 18.7, "lat": 1666.171, "p99": 2499.805}, "SNDRGaming-tmp": {"bw": 5549.93, "iops": 5548.9, "lat": 5.728, "p99": 24.248}}}], "raw": [["SNDRGaming-nfs_nasty_testshare", "Latenz Lesen (QD1)", "read", 0.73, 186.2, 5.368, 11.6], ["SNDRGaming-tmp", "Latenz Lesen (QD1)", "read", 29.65, 7589.8, 0.13, 0.167], ["SNDRGaming-nfs_nasty_testshare", "Latenz Schreiben (QD1)", "write", 0.65, 167.1, 5.98, 13.435], ["SNDRGaming-tmp", "Latenz Schreiben (QD1)", "write", 35.62, 9117.8, 0.108, 0.144], ["SNDRGaming-nfs_nasty_testshare", "Mischlast 70/30 — Lesen", "read", 4.92, 1260.2, 20.816, 114.819], ["SNDRGaming-tmp", "Mischlast 70/30 — Lesen", "read", 439.24, 112445.0, 0.216, 0.444], ["SNDRGaming-nfs_nasty_testshare", "Mischlast 70/30 — Schreiben", "write", 2.1, 538.3, 9.468, 14.615], ["SNDRGaming-tmp", "Mischlast 70/30 — Schreiben", "write", 188.27, 48196.9, 0.15, 0.305], ["SNDRGaming-nfs_nasty_testshare", "Random Lesen (QD32)", "read", 4.91, 1253.7, 101.867, 350.224], ["SNDRGaming-tmp", "Random Lesen (QD32)", "read", 1293.22, 331061.0, 0.384, 0.717], ["SNDRGaming-nfs_nasty_testshare", "Random Schreiben (QD32)", "write", 6.83, 1745.0, 73.178, 274.727], ["SNDRGaming-tmp", "Random Schreiben (QD32)", "write", 1323.84, 338898.5, 0.375, 1.057], ["SNDRGaming-nfs_nasty_testshare", "Sequenziell Lesen", "read", 21.73, 20.7, 1506.966, 2399.142], ["SNDRGaming-tmp", "Sequenziell Lesen", "read", 6907.48, 6906.4, 4.609, 6.914], ["SNDRGaming-nfs_nasty_testshare", "Sequenziell Schreiben", "write", 19.66, 18.7, 1666.171, 2499.805], ["SNDRGaming-tmp", "Sequenziell Schreiben", "write", 5549.93, 5548.9, 5.728, 24.248]], "paramsCommon": [{"test": "Latenz Lesen (QD1)", "values": {"rw": "randread", "bs": "4k", "iodepth": "1", "numjobs": "1", "ioengine": "psync", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Latenz Schreiben (QD1)", "values": {"rw": "randwrite", "bs": "4k", "iodepth": "1", "numjobs": "1", "ioengine": "psync", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Mischlast 70/30", "values": {"rw": "randrw", "bs": "4k", "iodepth": "16", "numjobs": "2", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Random Lesen (QD32)", "values": {"rw": "randread", "bs": "4k", "iodepth": "32", "numjobs": "4", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Random Schreiben (QD32)", "values": {"rw": "randwrite", "bs": "4k", "iodepth": "32", "numjobs": "4", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Sequenziell Lesen", "values": {"rw": "read", "bs": "1M", "iodepth": "32", "numjobs": "1", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}, {"test": "Sequenziell Schreiben", "values": {"rw": "write", "bs": "1M", "iodepth": "32", "numjobs": "1", "ioengine": "libaio", "size": "4G", "direct": "1", "runtime": "30", "ramp_time": "5"}}], "paramsDeviations": [], "paramFields": ["rw", "bs", "iodepth", "numjobs", "ioengine", "size", "direct", "runtime", "ramp_time"], "compares": {"SNDRGaming-nfs_nasty_testshare → SNDRGaming-tmp": [["latency_read", "read", 0.7, 29.6, 3980.5, false], ["latency_write", "write", 0.7, 35.6, 5359.7, false], ["mixed_70r_30w", "read", 4.9, 439.2, 8819.0, false], ["mixed_70r_30w", "write", 2.1, 188.3, 8850.2, false], ["rand_read_iops", "read", 4.9, 1293.2, 26222.0, false], ["rand_write_iops", "write", 6.8, 1323.8, 19276.9, false], ["seq_read", "read", 21.7, 6907.5, 31682.8, false], ["seq_write", "write", 19.7, 5549.9, 28123.7, false]], "SNDRGaming-tmp → SNDRGaming-nfs_nasty_testshare": [["latency_read", "read", 29.6, 0.7, -97.5, true], ["latency_write", "write", 35.6, 0.7, -98.2, true], ["mixed_70r_30w", "read", 439.2, 4.9, -98.9, true], ["mixed_70r_30w", "write", 188.3, 2.1, -98.9, true], ["rand_read_iops", "read", 1293.2, 4.9, -99.6, true], ["rand_write_iops", "write", 1323.8, 6.8, -99.5, true], ["seq_read", "read", 6907.5, 21.7, -99.7, true], ["seq_write", "write", 5549.9, 19.7, -99.6, true]]}, "stats": [{"value": "317.9×", "crit": true, "label": "Größter Unterschied — Sequenziell Lesen", "detail": "22 – 6907 MB/s"}, {"value": "40.62×", "crit": false, "label": "Kleinster Unterschied — Latenz Lesen (QD1)", "detail": "1 – 30 MB/s"}, {"value": "2", "crit": false, "label": "Getestete Verzeichnisse", "detail": "/mnt/nfs_nasty_testshare, /tmp"}], "callParams": {"deviates": false, "size": "4G", "runtime": "30s", "ioengine": "libaio", "direct": "1"}, "footer": "<div>CSV-Dateien: <code>SNDRGaming-nfs_nasty_testshare/summary.csv<\/code> · <code>SNDRGaming-tmp/summary.csv<\/code> · <code>compare_SNDRGaming-nfs_nasty_testshare_vs_SNDRGaming-tmp.csv<\/code> · <code>compare_SNDRGaming-tmp_vs_SNDRGaming-nfs_nasty_testshare.csv<\/code><\/div><div>Erzeugt mit generate-report.py aus storage-bench.sh-Ergebnissen (2026-07-25 15:25).<\/div>"};
+</script>
+<script>
+(function () {
+  const REPORT = window.__REPORT_DATA__;
+  const LOCS = REPORT.locations;
+  const DATA = REPORT.tests;
+  const RAW = REPORT.raw;
+  const COMPARE = REPORT.compares || {};
+
+  // Über die Legende ausgeblendete Verzeichnisse (per Klick auf eine Kachel).
+  // Wirkt auf beide Diagramme (Skala rechnet sich neu auf die sichtbaren Werte)
+  // und filtert die Compare-Umschalter unten, damit dort keine Paare mit einem
+  // gerade ausgeblendeten Label mehr auftauchen.
+  const hiddenLocs = new Set();
+
+  // Labels und --target-Pfade kommen von der Kommandozeile (--label/--target) und
+  // landen an mehreren Stellen per innerHTML im Report — ohne Escaping würde z.B.
+  // --label "<img src=x onerror=...>" im generierten (und ggf. geteilten!) Report
+  // ausgeführt. Alles rein Interne (Testnamen, Kennzahlen, feste Feldlisten) ist
+  // hartkodiert und braucht das nicht, wird hier aber der Einfachheit halber an
+  // denselben Stellen mit escaped, wo es neben Label-/Pfad-Text steht.
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  document.getElementById('report-h1').textContent =
+    'Storage-Benchmark: ' + LOCS.map(l => l.label).join(' · ');
+
+  const metaRow = document.getElementById('meta-row');
+  metaRow.innerHTML = `
+    <span>fio <b>${esc(REPORT.meta.fio_version)}</b></span>
+    <span>Erzeugt <b>${esc(REPORT.meta.generated)}</b></span>
+    <span>Labels <b>${REPORT.meta.labels.map(esc).join(', ')}</b></span>
+  `;
+
+  const statRow = document.getElementById('stat-row');
+  (REPORT.stats || []).forEach(s => {
+    const tile = document.createElement('div');
+    tile.className = 'stat-tile';
+    tile.innerHTML = `
+      <div class="stat-value ${s.crit ? 'crit' : ''}">${esc(s.value)}</div>
+      <div class="stat-label">${esc(s.label)}</div>
+      <div class="stat-detail">${esc(s.detail)}</div>
+    `;
+    statRow.appendChild(tile);
+  });
+
+  // Aufrufparameter-Kachel: mehrere kurze Schlüssel/Wert-Paare (size, runtime, …)
+  // statt einer einzelnen Kennzahl — eigenes Mini-Layout statt sie in eine
+  // stat-value-Zeile zu quetschen, das würde umbrechen/überlaufen.
+  const cp = REPORT.callParams;
+  if (cp) {
+    const tile = document.createElement('div');
+    tile.className = 'stat-tile';
+    if (cp.deviates) {
+      tile.innerHTML = `
+        <div class="stat-label">Aufrufparameter</div>
+        <span class="pill crit" style="align-self:flex-start">NICHT EINHEITLICH</span>
+        <div class="stat-detail">Weicht zwischen Labels ab — siehe Testparameter-Abweichungen unten</div>
+      `;
+    } else {
+      const rows = [
+        ['size', cp.size], ['runtime', cp.runtime],
+        ['ioengine', cp.ioengine], ['direct', cp.direct],
+      ];
+      tile.innerHTML = `
+        <div class="stat-label">Aufrufparameter</div>
+        <div class="param-grid">
+          ${rows.map(([k, v]) => `
+            <div class="param-row"><span class="param-key">${k}</span><span class="param-val mono">${esc(v)}</span></div>
+          `).join('')}
+        </div>
+        <div class="stat-detail">Latenz-Tests erzwingen zusätzlich ioengine=psync</div>
+      `;
+    }
+    statRow.appendChild(tile);
+  }
+
+  const tooltip = document.getElementById('tooltip');
+  function showTip(e, html) {
+    tooltip.innerHTML = html;
+    tooltip.style.left = e.clientX + 'px';
+    tooltip.style.top = e.clientY + 'px';
+    tooltip.classList.add('show');
+  }
+  function hideTip() { tooltip.classList.remove('show'); }
+
+  // Legende ist klickbar: blendet das Verzeichnis in beiden Diagrammen und in den
+  // Compare-Umschaltern aus/ein (renderCharts/renderCompareSection sind weiter unten
+  // als function-Deklarationen definiert, wegen Hoisting hier trotzdem aufrufbar —
+  // die Klicks passieren ohnehin erst, nachdem das Skript einmal komplett gelaufen ist).
+  const legend = document.getElementById('legend');
+  LOCS.forEach(l => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'legend-chip';
+    chip.setAttribute('aria-pressed', 'true');
+    chip.innerHTML = `<span class="swatch" style="background:${l.color}"></span><span class="name mono">${esc(l.label)}</span>`;
+    chip.addEventListener('click', () => {
+      const nowHidden = !hiddenLocs.has(l.key);
+      if (nowHidden) hiddenLocs.add(l.key); else hiddenLocs.delete(l.key);
+      chip.classList.toggle('inactive', nowHidden);
+      chip.setAttribute('aria-pressed', String(!nowHidden));
+      renderCharts();
+      renderCompareSection();
+    });
+    legend.appendChild(chip);
+  });
+
+  // Rendert eine Glossar-Spalte (Kennzahlen ODER Testarten) aus [term, desc]-Paaren.
+  // Bleibt leer/unsichtbar, wenn items leer ist (z.B. Testarten-Glossar bei einem
+  // Report ohne Tests aus TEST_GLOSSARY) statt einer leeren Überschrift ohne Inhalt.
+  const glossary = REPORT.glossary || { metrics: [], tests: [] };
+  function renderGlossary(containerId, subhead, items) {
+    const el = document.getElementById(containerId);
+    if (!items.length) return;
+    const head = document.createElement('div');
+    head.className = 'glossary-subhead';
+    head.textContent = subhead;
+    el.appendChild(head);
+    items.forEach(([term, desc]) => {
+      const item = document.createElement('div');
+      item.className = 'glossary-item';
+      item.innerHTML = `<span class="glossary-term mono">${term}</span><span class="glossary-desc">${desc}</span>`;
+      el.appendChild(item);
+    });
+  }
+  renderGlossary('glossary-metrics', 'Kennzahlen', glossary.metrics);
+  renderGlossary('glossary-tests', 'Testarten in diesem Report',
+    glossary.tests.map(t => [t.term, t.desc]));
+
+  // Logarithmische statt lineare Balkenlänge: die Werte können über mehrere
+  // Größenordnungen streuen (z.B. 16 MB/s bis 6900 MB/s im selben Diagramm) —
+  // linear wären die kleinen Balken nicht mehr als 1px breit. Exakte Zahl steht
+  // trotzdem immer direkt daneben, damit die Skala nicht in die Irre führt.
+  function logWidth(v, floor, ceil) {
+    const lv = Math.log10(Math.max(v, floor));
+    const lf = Math.log10(floor), lc = Math.log10(ceil);
+    return Math.max(1.5, Math.min(100, ((lv - lf) / (lc - lf)) * 100));
+  }
+
+  // Skalengrenzen pro Diagramm aus den tatsächlich vorkommenden (und aktuell nicht
+  // über die Legende ausgeblendeten) Werten ableiten — funktioniert dadurch
+  // unverändert für 2 wie für 8 Labels, und rechnet sich neu, sobald ein
+  // Verzeichnis aus-/eingeblendet wird.
+  function computeBounds(metricKey) {
+    let vals = [];
+    DATA.forEach(g => LOCS.forEach(l => {
+      if (hiddenLocs.has(l.key)) return;
+      const v = g.values[l.key];
+      if (v && v[metricKey] > 0) vals.push(v[metricKey]);
+    }));
+    if (!vals.length) return [1, 10];
+    const floor = Math.pow(10, Math.floor(Math.log10(Math.min(...vals))));
+    const ceil = Math.pow(10, Math.ceil(Math.log10(Math.max(...vals))));
+    return [floor, ceil];
+  }
+
+  // Ein Balkendiagramm (Durchsatz ODER Latenz) aus DATA aufbauen: pro Testart eine
+  // Gruppe, darin ein Balken pro Verzeichnis (LOCS-Reihenfolge = Legenden-Reihenfolge).
+  // metricKey wählt 'bw' oder 'lat' aus group.values[loc.key]; Skala kommt aus
+  // computeBounds() oben, ist also für beide Diagramme unabhängig voneinander passend.
+  // Über die Legende ausgeblendete Verzeichnisse werden übersprungen; bleibt eine
+  // Testart dadurch komplett ohne Balken, wird die ganze Gruppe (inkl. Beschriftung)
+  // weggelassen statt einer leeren Zeile.
+  function buildChart(containerId, metricKey, unit, decimals) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    const [floor, ceil] = computeBounds(metricKey);
+    DATA.forEach(group => {
+      const g = document.createElement('div');
+      g.className = 'bar-group';
+      const gl = document.createElement('div');
+      gl.className = 'bar-group-label';
+      gl.textContent = group.label;
+      g.appendChild(gl);
+
+      let rowCount = 0;
+      LOCS.forEach(loc => {
+        if (hiddenLocs.has(loc.key)) return;
+        const v = group.values[loc.key];
+        if (!v) return;
+        rowCount++;
+        const val = v[metricKey];
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+
+        const locEl = document.createElement('div');
+        locEl.className = 'bar-loc mono';
+        locEl.textContent = loc.label;
+
+        const track = document.createElement('div');
+        track.className = 'bar-track';
+        const fill = document.createElement('div');
+        fill.className = 'bar-fill';
+        fill.style.width = logWidth(val, floor, ceil) + '%';
+        fill.style.background = loc.color;
+        fill.addEventListener('mousemove', e => showTip(e, `<b>${esc(loc.label)}</b> — ${esc(group.label)}<br>${val.toLocaleString('de-DE', {maximumFractionDigits: decimals})} ${unit}`));
+        fill.addEventListener('mouseleave', hideTip);
+        track.appendChild(fill);
+
+        const valEl = document.createElement('div');
+        valEl.className = 'bar-value mono';
+        valEl.textContent = val.toLocaleString('de-DE', {maximumFractionDigits: decimals}) + ' ' + unit;
+
+        row.appendChild(locEl);
+        row.appendChild(track);
+        row.appendChild(valEl);
+        g.appendChild(row);
+      });
+      if (rowCount > 0) el.appendChild(g);
+    });
+  }
+
+  function renderCharts() {
+    buildChart('chart-bw', 'bw', 'MB/s', 0);
+    buildChart('chart-lat', 'lat', 'ms', 2);
+  }
+
+  renderCharts();
+
+  // Vergleichs-Sektion: nur aufbauen, wenn generate-report.py tatsächlich passende
+  // compare_*.csv-Dateien gefunden hat (COMPARE nicht leer) — sonst Hinweistext mit
+  // fertigem Befehl statt einer leeren/verwirrenden Tabelle. Über die Legende
+  // ausgeblendete Verzeichnisse filtern zusätzlich, welche Paare zur Auswahl stehen
+  // (key-Format "A → B" — beide Seiten müssen aktuell sichtbar sein), sonst könnte
+  // hier ein Paar mit einem gerade ausgeblendeten Label weiter auswählbar bleiben.
+  function renderCompareSection() {
+    const compareBody = document.getElementById('compare-body');
+    compareBody.innerHTML = '';
+    const allKeys = Object.keys(COMPARE);
+    const visibleKeys = allKeys.filter(key => {
+      const [a, b] = key.split(' → ');
+      return !hiddenLocs.has(a) && !hiddenLocs.has(b);
+    });
+
+    if (!allKeys.length) {
+      compareBody.innerHTML = `<p class="empty-note">Keine compare-Läufe gefunden. Führe z.B. <code class="mono">storage-bench.sh compare ${esc(LOCS[0] ? LOCS[0].key : 'A')} ${esc(LOCS[1] ? LOCS[1].key : 'B')}</code> aus und erzeuge den Report neu.</p>`;
+      return;
+    }
+    if (!visibleKeys.length) {
+      compareBody.innerHTML = `<p class="empty-note">Alle passenden Vergleiche sind über die Legende oben ausgeblendet — Kachel(n) wieder anklicken, um sie zu sehen.</p>`;
+      return;
+    }
+
+    const toggleEl = document.createElement('div');
+    toggleEl.className = 'compare-toggle';
+    const scrollWrap = document.createElement('div');
+    scrollWrap.className = 'table-scroll';
+    const table = document.createElement('table');
+    table.innerHTML = `<thead><tr><th>Test</th><th>Richtung</th><th class="num">vorher</th><th class="num">nachher</th><th class="num">Delta</th><th>Status</th></tr></thead><tbody></tbody>`;
+    scrollWrap.appendChild(table);
+    compareBody.appendChild(toggleEl);
+    compareBody.appendChild(scrollWrap);
+    const tbody = table.querySelector('tbody');
+
+    // Füllt die Tabelle für ein Label-Paar (key = "A → B"); wird beim Wechsel
+    // zwischen den Umschalter-Buttons erneut aufgerufen, ersetzt dabei den
+    // kompletten tbody-Inhalt statt einzelne Zeilen zu aktualisieren.
+    function renderCompare(key) {
+      tbody.innerHTML = '';
+      COMPARE[key].forEach(([test, dir, before, after, delta, isReg]) => {
+        const tr = document.createElement('tr');
+        const magnitude = Math.min(Math.abs(delta), 100);
+        const barColor = isReg ? 'var(--status-critical)' : (delta > 0 ? 'var(--status-good)' : 'var(--ink-muted)');
+        tr.innerHTML = `
+          <td>${test}</td>
+          <td class="mono">${dir}</td>
+          <td class="num mono">${before.toLocaleString('de-DE')}</td>
+          <td class="num mono">${after.toLocaleString('de-DE')}</td>
+          <td class="num">
+            <div class="delta-cell">
+              <div class="delta-bar-track">
+                <div class="delta-bar-fill" style="width:${magnitude}%; background:${barColor}; ${delta < 0 ? 'right:50%' : 'left:50%'}"></div>
+              </div>
+              <span class="mono" style="color:${isReg ? 'var(--status-critical)' : 'var(--ink-secondary)'}">${delta > 0 ? '+' : ''}${delta.toFixed(1)}%</span>
+            </div>
+          </td>
+          <td>${isReg ? '<span class="pill crit">REGRESSION</span>' : '<span class="pill ok">OK</span>'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    visibleKeys.forEach((key, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = key;
+      btn.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
+      btn.addEventListener('click', () => {
+        toggleEl.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+        btn.setAttribute('aria-pressed', 'true');
+        renderCompare(key);
+      });
+      toggleEl.appendChild(btn);
+    });
+    renderCompare(visibleKeys[0]);
+  }
+
+  renderCompareSection();
+
+  const locLabel = Object.fromEntries(LOCS.map(l => [l.key, l.label]));
+
+  // Testparameter-Tabelle: eine Zeile pro Testart (nicht pro Label — die Werte sind
+  // normalerweise über alle Labels identisch). Spalten kommen dynamisch aus
+  // REPORT.paramFields, damit neue/andere fio-Optionen im Hauptskript nicht auch
+  // hier im Template nachgezogen werden müssen.
+  const FIELD_LABELS = {
+    rw: 'rw', bs: 'bs', iodepth: 'iodepth', numjobs: 'numjobs', ioengine: 'ioengine',
+    size: 'size', direct: 'direct', runtime: 'runtime (s)', ramp_time: 'ramp (s)',
+  };
+  const PARAM_FIELDS = REPORT.paramFields || [];
+  const paramsHead = document.getElementById('params-head');
+  paramsHead.innerHTML = `<th>Test</th>` +
+    PARAM_FIELDS.map(f => `<th class="num">${FIELD_LABELS[f] || f}</th>`).join('');
+  const paramsBody = document.querySelector('#params-table tbody');
+  (REPORT.paramsCommon || []).forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.test}</td>` +
+      PARAM_FIELDS.map(f => `<td class="num mono">${row.values[f]}</td>`).join('');
+    paramsBody.appendChild(tr);
+  });
+
+  // Abweichungen: nur gerendert, wenn es welche gibt. Zeigt je Zeile Label, Test,
+  // welches Feld abweicht, den abweichenden Wert und zum Vergleich den in der
+  // Tabelle oben gezeigten gemeinsamen Wert.
+  const deviations = REPORT.paramsDeviations || [];
+  const devEl = document.getElementById('params-deviations');
+  if (!deviations.length) {
+    devEl.innerHTML = `<p class="empty-note">Keine Abweichungen — alle Labels liefen mit identischen Parametern.</p>`;
+  } else {
+    const devTable = document.createElement('table');
+    devTable.innerHTML = `<thead><tr><th>Verzeichnis</th><th>Test</th><th>Feld</th><th class="num">Wert</th><th class="num">Erwartet</th></tr></thead><tbody></tbody>`;
+    const devBody = devTable.querySelector('tbody');
+    deviations.forEach(([loc, test, field, value, expected]) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="mono">${esc(locLabel[loc] || loc)}</td>
+        <td>${esc(test)}</td>
+        <td class="mono">${esc(FIELD_LABELS[field] || field)}</td>
+        <td class="num mono" style="color:var(--status-critical)">${esc(value)}</td>
+        <td class="num mono">${esc(expected)}</td>
+      `;
+      devBody.appendChild(tr);
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    wrap.appendChild(devTable);
+    devEl.innerHTML = `<div class="glossary-subhead" style="margin-bottom:8px">Abweichungen von den gemeinsamen Parametern</div>`;
+    devEl.appendChild(wrap);
+  }
+
+  const rawBody = document.querySelector('#raw-table tbody');
+  RAW.forEach(([loc, test, dir, bw, iops, lat, p99]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="mono">${esc(locLabel[loc] || loc)}</td>
+      <td>${esc(test)}</td>
+      <td class="mono">${esc(dir)}</td>
+      <td class="num mono">${bw.toLocaleString('de-DE')}</td>
+      <td class="num mono">${iops.toLocaleString('de-DE')}</td>
+      <td class="num mono">${lat.toFixed(2)}</td>
+      <td class="num mono">${p99.toFixed(2)}</td>
+    `;
+    rawBody.appendChild(tr);
+  });
+
+  document.getElementById('report-footer').innerHTML = REPORT.footer || '';
+})();
+</script>

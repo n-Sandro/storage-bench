@@ -1,0 +1,9 @@
+test,direction,bw_before_MBps,bw_after_MBps,delta_pct,regression
+latency_read,read,0.7,29.6,3980.5,nein
+latency_write,write,0.7,35.6,5359.7,nein
+mixed_70r_30w,read,4.9,439.2,8819.0,nein
+mixed_70r_30w,write,2.1,188.3,8850.2,nein
+rand_read_iops,read,4.9,1293.2,26222.0,nein
+rand_write_iops,write,6.8,1323.8,19276.9,nein
+seq_read,read,21.7,6907.5,31682.8,nein
+seq_write,write,19.7,5549.9,28123.7,nein
