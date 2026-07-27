@@ -131,6 +131,24 @@ validate_label() {
   esac
 }
 
+# Prüft freien Platz in $1 gegen die Testdateigröße $2 (fio-Größenangabe wie
+# "4G"/"512M"), BEVOR fio läuft — sonst scheitert fio selbst mitten im
+# Vorbelegen der Testdatei mit dem kryptischen "err=28 ... No space left on
+# device", ohne zu sagen, wie viel eigentlich gebraucht/frei war. numfmt
+# --from=iec versteht dieselben Suffixe (k/M/G/T = *1024), die fio für --size
+# akzeptiert. Kein Sicherheitsabstand über die reine Größe hinaus — reicht,
+# um den mit Abstand häufigsten Fall (--size deutlich zu groß fürs Ziel) klar
+# zu melden, ohne beim exakten Grenzfall selbst noch mitzuraten.
+check_free_space() {
+  local dir="$1" size="$2" size_bytes avail_bytes
+  size_bytes=$(numfmt --from=iec "$size" 2>/dev/null) || die "Ungültiger --size Wert: $size"
+  avail_bytes=$(df --output=avail -B1 "$dir" 2>/dev/null | tail -1 | tr -d ' ')
+  [ -n "$avail_bytes" ] || return 0
+  if [ "$size_bytes" -gt "$avail_bytes" ]; then
+    die "Zu wenig freier Platz in $dir: --size=$size (${size_bytes} Bytes) benötigt, verfügbar nur $(numfmt --to=iec "$avail_bytes") (${avail_bytes} Bytes). --size verkleinern oder anderes --target wählen."
+  fi
+}
+
 # Prüft fio/jq und bricht ab (außer im --dry-run, wo fehlende Tools nur gewarnt
 # werden, da ohnehin nichts ausgeführt wird).
 check_deps() {
@@ -274,6 +292,7 @@ cmd_run() {
       # fio selbst mitten im Lauf mit einer kryptischen fstat/Permission-Fehlermeldung
       # (typisch bei NFS-Freigaben mit falschen Berechtigungen/UID-Mapping).
       [ -w "$TARGET_DIR" ] || die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+      check_free_space "$TARGET_DIR" "$SIZE"
     fi
   fi
 
@@ -498,6 +517,7 @@ cmd_watch() {
   if [ "$DRY_RUN" -eq 0 ]; then
     [ -d "$TARGET_DIR" ] || die "Zielverzeichnis existiert nicht: $TARGET_DIR"
     [ -w "$TARGET_DIR" ] || die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+    check_free_space "$TARGET_DIR" "$SIZE"
   fi
 
   check_deps

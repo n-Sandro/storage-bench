@@ -86,6 +86,11 @@ auf jeder gängigen Linux-Distribution. Ein paar Dinge vorher prüfen:
   Problem (z.B. **NFS-Freigabe mit `root_squash`/falschem UID-Mapping**) sofort mit
   einer klaren Meldung auffällt statt erst mitten im fio-Lauf mit einem kryptischen
   `fstat`/`Permission denied`.
+- **Freier Platz** wird ebenso vorab gegen `--size` geprüft (`df` am `--target`).
+  Reicht der Platz nicht, bricht das Skript sofort mit einer klaren Meldung
+  (benötigt vs. verfügbar) ab — statt dass fio erst mitten im Vorbelegen der
+  Testdatei mit `err=28 ... No space left on device` abbricht, ohne zu sagen,
+  wie viel eigentlich gefehlt hat.
 - **fio-Version**: Der p99-Latenzwert wird aus dem JSON-Key `"99.000000"` gelesen
   (Format ab fio 3.x). Sehr alte fio-Versionen (2.x) könnten das anders benennen —
   dann zeigt p99 still `0` statt zu crashen. `fio --version` vorher prüfen.
