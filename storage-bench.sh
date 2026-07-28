@@ -545,6 +545,17 @@ cmd_watch() {
   #   Hänger mitten im 30-Minuten-Fenster würde im Durchschnitt sonst verschwinden.
   # --iodepth niedrig (WATCH_IODEPTH, Default 4): der Messlauf soll den Umschwenk
   #   selbst nicht durch eigene Last zusätzlich verschärfen.
+  # Bewusst KEIN --output=<datei>: fio leitet damit ALLE Ausgaben (auch die
+  #   periodischen --status-interval-Zeilen) in die Datei um, nichts mehr geht
+  #   auf stdout — der Live-Status auf dem Terminal wäre dann komplett stumm,
+  #   trotz "tee" weiter unten. Ohne --output läuft alles über stdout, tee
+  #   zeigt es live UND schreibt es nach watch-status.log.
+  # --eta=always + --eta-newline: fio erkennt, dass stdout hier keine echte TTY
+  #   ist (sondern in "tee" gepiped wird), und unterdrückt seine periodische
+  #   Status-/ETA-Zeile standardmäßig komplett dafür — --status-interval allein
+  #   reicht nicht. --eta=always erzwingt die Anzeige trotzdem, --eta-newline
+  #   sorgt für eine echte Newline pro Intervall statt eines Carriage-Return-
+  #   Overwrites, der nur auf einem echten Terminal Sinn ergibt.
   local fio_cmd=(fio
     --name=watch
     --filename="$TESTFILE"
@@ -559,10 +570,11 @@ cmd_watch() {
     --numjobs=1
     --ioengine="$IOENGINE"
     --status-interval="$STATUS_INTERVAL"
+    --eta=always
+    --eta-newline="$STATUS_INTERVAL"
     --continue_on_error=all
     --write_lat_log="${outdir}/${LABEL}"
     --log_avg_msec=1000
-    --output="${outdir}/watch.log"
   )
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -599,13 +611,26 @@ cmd_watch() {
   # oben ohnehin schon geleert) — mit ">>" würden sich bei Wiederverwendung eines
   # Labels alte und neue Heartbeat-Zeitstempel vermischen und die Anomalie-Timeline
   # verfälschen.
+  # prev_status verfolgt Zustandswechsel, damit nur beim Wechsel OK<->STALL eine
+  # Zeile auf dem Terminal erscheint (log() schreibt nach stderr, landet also nicht
+  # in "$heartbeat_log" — nur dessen stdout wird umgeleitet) — nicht bei jedem
+  # einzelnen Check, sonst würde das Terminal bei HEARTBEAT_INTERVAL=1s zugespamt.
+  # Genau das war die Lücke im zweiten Testfall: hängt fio selbst im Kernel fest
+  # (I/O-Hänger, z.B. eine für Minuten unerreichbare LIF), blieb bislang auch das
+  # Terminal komplett stumm bis zum Ende — der Heartbeat lief zwar unabhängig
+  # weiter, meldete sich aber nur in der Datei, nie live.
   (
+    prev_status="OK"
     while true; do
       local_ts=$(date +%s)
       if timeout "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
         echo "${local_ts} OK"
+        [ "$prev_status" = "STALL" ] && log "Heartbeat: wieder OK — Ziel antwortet wieder"
+        prev_status="OK"
       else
         echo "${local_ts} STALL"
+        [ "$prev_status" = "OK" ] && log "Heartbeat: STALL — kein Ping seit über ${HEARTBEAT_TIMEOUT}s"
+        prev_status="STALL"
       fi
       sleep "$HEARTBEAT_INTERVAL"
     done

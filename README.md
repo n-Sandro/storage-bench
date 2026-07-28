@@ -250,11 +250,17 @@ ein durchgehender Messlauf ohne Lücken, plus unabhängige Ausfallerkennung.
    sekundengenaue Latenzwerte mit — ein reiner Durchschnitt über 30 Minuten würde
    einen kurzen Hänger verschlucken, die Zeitreihe zeigt ihn.
 3. **Live-Status:** `--status-interval` (Default 5s) zeigt während des Laufs
-   periodisch IOPS/Latenz auf dem Terminal.
+   periodisch IOPS/Latenz auf dem Terminal. Da stdout hier durch `tee` läuft
+   (keine echte TTY), reicht `--status-interval` allein nicht — fio würde die
+   periodische Anzeige sonst standardmäßig unterdrücken; `--eta=always` +
+   `--eta-newline` erzwingen sie trotzdem.
 4. **Unabhängiger Heartbeat:** parallel zu fio läuft alle `--heartbeat-interval`
    Sekunden (Default 1s) ein einzelner `dd`-Schreibtest mit `timeout`. Überschreitet
-   er `--heartbeat-timeout` (Default 2s), wird ein `STALL` geloggt — unabhängig
-   davon, ob fio selbst gerade blockiert.
+   er `--heartbeat-timeout` (Default 2s), wird ein `STALL` in `heartbeat.log`
+   geloggt — unabhängig davon, ob fio selbst gerade blockiert (z.B. weil ein LIF
+   minutenlang nicht erreichbar ist und fios eigener I/O-Call im Kernel hängt).
+   Bei jedem Wechsel OK→STALL bzw. STALL→OK erscheint zusätzlich sofort eine
+   Zeile auf dem Terminal, nicht nur in der Log-Datei.
 5. **Nach Laufende:** automatische Anomalie-Timeline — alle Latenzausreißer über
    `--spike-threshold` (Default 100ms) und alle Heartbeat-Stalls, jeweils mit
    geschätzter Wanduhrzeit, damit man sie gegen den tatsächlichen
@@ -277,8 +283,9 @@ ein durchgehender Messlauf ohne Lücken, plus unabhängige Ausfallerkennung.
 | `--dry-run` | aus | Nur simulieren |
 | `-h`, `--help` | – | Hilfe anzeigen und beenden |
 
-**Ergebnisdateien** unter `results/<label>/`: `watch.log` (fio-Endstatistik),
-`watch-status.log` (Live-Status-Verlauf), `<label>_lat.1.log` (Completion-Latenz-
+**Ergebnisdateien** unter `results/<label>/`: `watch-status.log` (kompletter
+Live-Status-Verlauf inkl. fio-Endstatistik, da alles über stdout/tee läuft —
+siehe oben), `<label>_lat.1.log` (Completion-Latenz-
 Zeitreihe — das ist die Datei, die `analyze_watch` für die Anomalie-Timeline liest;
 `--write_lat_log` schreibt daneben noch `<label>_clat.1.log` und `<label>_slat.1.log`
 mit, die aber von `storage-bench.sh` selbst nicht ausgewertet werden),
@@ -487,7 +494,7 @@ results/
 │   ├── smart-before.txt / smart-after.txt  ← nur bei --device
 │   │
 │   │  (bei `watch` stattdessen:)
-│   ├── watch.log, watch-status.log
+│   ├── watch-status.log, heartbeat.log
 │   ├── <label>_lat.1.log                 ← wird von analyze_watch ausgewertet
 │   ├── <label>_clat.1.log / _slat.1.log  ← von fio mitgeschrieben, ungenutzt
 │   ├── heartbeat.log
