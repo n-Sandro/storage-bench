@@ -546,16 +546,20 @@ cmd_watch() {
   # --iodepth niedrig (WATCH_IODEPTH, Default 4): der Messlauf soll den Umschwenk
   #   selbst nicht durch eigene Last zusätzlich verschärfen.
   # Bewusst KEIN --output=<datei>: fio leitet damit ALLE Ausgaben (auch die
-  #   periodischen --status-interval-Zeilen) in die Datei um, nichts mehr geht
+  #   periodischen Live-Status-Zeilen) in die Datei um, nichts mehr geht
   #   auf stdout — der Live-Status auf dem Terminal wäre dann komplett stumm,
   #   trotz "tee" weiter unten. Ohne --output läuft alles über stdout, tee
   #   zeigt es live UND schreibt es nach watch-status.log.
-  # --eta=always + --eta-newline: fio erkennt, dass stdout hier keine echte TTY
-  #   ist (sondern in "tee" gepiped wird), und unterdrückt seine periodische
-  #   Status-/ETA-Zeile standardmäßig komplett dafür — --status-interval allein
-  #   reicht nicht. --eta=always erzwingt die Anzeige trotzdem, --eta-newline
-  #   sorgt für eine echte Newline pro Intervall statt eines Carriage-Return-
-  #   Overwrites, der nur auf einem echten Terminal Sinn ergibt.
+  # --eta=always + --eta-newline (NICHT --status-interval!): fio erkennt, dass
+  #   stdout hier keine echte TTY ist (sondern in "tee" gepiped wird), und
+  #   unterdrückt seine periodische Status-/ETA-Zeile standardmäßig komplett
+  #   dafür. --eta=always erzwingt die Anzeige trotzdem, --eta-newline sorgt für
+  #   eine echte Newline pro Intervall statt eines Carriage-Return-Overwrites,
+  #   der nur auf einem echten Terminal Sinn ergibt. --status-interval bewusst
+  #   NICHT gesetzt: das erzwingt bei fio einen kompletten Status-DUMP (inkl.
+  #   eigenem "Run status group"-Block) bei jedem Tick statt der schlanken
+  #   Ein-Zeile-Ausgabe, die --eta-newline allein schon liefert — unübersichtlich
+  #   bei einem 30-Minuten-Lauf mit vielen Ticks.
   local fio_cmd=(fio
     --name=watch
     --filename="$TESTFILE"
@@ -569,7 +573,6 @@ cmd_watch() {
     --iodepth="$WATCH_IODEPTH"
     --numjobs=1
     --ioengine="$IOENGINE"
-    --status-interval="$STATUS_INTERVAL"
     --eta=always
     --eta-newline="$STATUS_INTERVAL"
     --continue_on_error=all
