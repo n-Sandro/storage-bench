@@ -629,8 +629,17 @@ cmd_watch() {
   # (I/O-Hänger, z.B. eine für Minuten unerreichbare LIF), blieb bislang auch das
   # Terminal komplett stumm bis zum Ende — der Heartbeat lief zwar unabhängig
   # weiter, meldete sich aber nur in der Datei, nie live.
+  #
+  # Zusätzlich alle $STATUS_INTERVAL Sekunden (unabhängig vom OK/STALL-Wechsel
+  # oben) eine eigene Statuszeile mit CPU-Last (1-Min-Load aus /proc/loadavg) —
+  # im selben Rhythmus wie fios eigene Tick-Zeile, damit es sich wie ein
+  # zusammenhängender Live-Strom liest. Kann NICHT als Feld in fios eigene Zeile
+  # geschrieben werden (die erzeugt fio selbst als fertigen String), daher eine
+  # eigene Zeile, aber bewusst im gleichen Takt statt bei jedem Heartbeat-Check
+  # (HEARTBEAT_INTERVAL kann viel kürzer sein, z.B. 1s) — sonst wieder Spam.
   (
     prev_status="OK"
+    next_status_print=$(( $(date +%s) + STATUS_INTERVAL ))
     while true; do
       local_ts=$(date +%s)
       if timeout "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
@@ -641,6 +650,11 @@ cmd_watch() {
         echo "${local_ts} STALL"
         [ "$prev_status" = "OK" ] && log "Heartbeat: STALL — kein Ping seit über ${HEARTBEAT_TIMEOUT}s"
         prev_status="STALL"
+      fi
+      if [ "$local_ts" -ge "$next_status_print" ]; then
+        cpu_load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null) || cpu_load="?"
+        log "Heartbeat: ${prev_status}  CPU-Load (1min): ${cpu_load}"
+        next_status_print=$((local_ts + STATUS_INTERVAL))
       fi
       sleep "$HEARTBEAT_INTERVAL"
     done
