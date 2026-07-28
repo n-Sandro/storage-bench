@@ -88,8 +88,6 @@ Die Testdatei (`<target>/fio-testfile`, Größe `--size`, Default 4G) wird beim 
 
 Vergleicht Bandbreite (nicht Latenz) zweier zuvor per `run` erzeugter Labels, Test für Test, und markiert einen Bandbreiten-Rückgang von mehr als 10% als `REGRESSION`. Schreibt `results/compare_<label1>_vs_<label2>.csv`. Für Latenz-Vergleiche direkt in die `*.json` der Labels schauen (`clat_ns`).
 
-Nur Bandbreite wird verglichen, keine Latenz — dafür direkt in die `*.json` beider Labels schauen (`clat_ns`).
-
 ---
 
 ## `watch` — Messung während eines Umschwenks
