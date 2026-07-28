@@ -535,6 +535,7 @@ cmd_watch() {
 
   TESTFILE="${TARGET_DIR%/}/fio-watch-testfile"
   local heartbeat_log="${outdir}/heartbeat.log"
+  local cpu_load_log="${outdir}/cpu_load.log"
   local start_epoch
   start_epoch=$(date +%s)
 
@@ -629,6 +630,16 @@ cmd_watch() {
   # (I/O-Hänger, z.B. eine für Minuten unerreichbare LIF), blieb bislang auch das
   # Terminal komplett stumm bis zum Ende — der Heartbeat lief zwar unabhängig
   # weiter, meldete sich aber nur in der Datei, nie live.
+  #
+  # CPU-Last (1-Min-Load aus /proc/loadavg) wird bei jedem Check zusätzlich in
+  # cpu_load.log mitgeschrieben — bewusst NUR in die Datei, keine eigene
+  # Terminal-Zeile. Ein erster Versuch, das live auszugeben, ist schiefgegangen:
+  # zwei unabhängige Prozesse (fio und dieser Heartbeat) schreiben unsynchronisiert
+  # auf dasselbe Terminal, und fios eigene Tick-Zeile nutzt Carriage-Return-
+  # Overwrites (siehe --eta-newline oben) — eine dazwischenfunkende Zeile vom
+  # Heartbeat konnte fios Zeile mitten im Aufbau zerreißen. Für Werte, die (anders
+  # als ein STALL) nicht in Echtzeit gebraucht werden, ist eine Datei ohne dieses
+  # Risiko die bessere Wahl.
   (
     prev_status="OK"
     while true; do
@@ -642,6 +653,8 @@ cmd_watch() {
         [ "$prev_status" = "OK" ] && log "Heartbeat: STALL — kein Ping seit über ${HEARTBEAT_TIMEOUT}s"
         prev_status="STALL"
       fi
+      cpu_load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null) || cpu_load="?"
+      echo "${local_ts} ${cpu_load}" >> "$cpu_load_log"
       sleep "$HEARTBEAT_INTERVAL"
     done
   ) > "$heartbeat_log" &
