@@ -210,7 +210,15 @@ run_fio_job() {
     return 0
   fi
 
-  "${cmd[@]}" | tee "$log_out" >/dev/null
+  # --output oben leitet fios GESAMTE reguläre Ausgabe (den JSON-Report) in
+  # "$json_out" um -- stdout ist bei --output-format=json daher immer leer,
+  # ein "tee stdout" wie früher hier hätte nie etwas in "$log_out" geschrieben
+  # (0 Bytes, ungeprüft so gebaut). fio schreibt Warnungen/Fehler dagegen immer
+  # nach stderr, unabhängig von --output -- das ist die eigentlich sinnvolle
+  # Quelle für "$log_out": leer im Erfolgsfall, gefüllt genau dann, wenn beim
+  # Teiltest etwas schiefging. "2>&1" vor der Pipe holt stderr dafür ab, ohne
+  # es vom Terminal fernzuhalten (kein abschließendes ">/dev/null" mehr).
+  "${cmd[@]}" 2>&1 | tee "$log_out"
 }
 
 # Liest bw/iops/Latenz aus einer fio-JSON-Datei und formatiert sie für die
