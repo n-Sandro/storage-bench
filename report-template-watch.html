@@ -144,6 +144,19 @@
       <div class="chart-legend" id="chart-legend"></div>
     </section>
 
+    <section class="panel" id="cpu-panel">
+      <div class="panel-head">
+        <h2>CPU-Last (Testrechner)</h2>
+        <span class="panel-note" style="margin:0">1-Min-Load, lineare Achse</span>
+      </div>
+      <p class="panel-note">
+        Last des Rechners, auf dem <code class="mono">storage-bench.sh watch</code> lief — nicht die
+        des Storage-Ziels. Hilft einzuordnen, ob ein Latenz-Spike eher am Testrechner selbst lag
+        (z.B. CPU-Engpass) statt am Storage. Gleiche Zeitachse wie oben, zum direkten Abgleich.
+      </p>
+      <div class="chart-wrap"><svg id="cpu-chart" viewBox="0 0 1000 180"></svg></div>
+    </section>
+
     <details class="raw-table">
       <summary>Ereignisse (Latenz-Spikes &amp; Heartbeat-Stalls)</summary>
       <div id="events-body"></div>
@@ -197,6 +210,7 @@
     { value: DATA.errorCount === null ? 'n/a' : String(DATA.errorCount), label: 'I/O-Fehler (fio)', crit: DATA.errorCount > 0 },
     { value: String(DATA.stalls.length), label: 'Heartbeat-Stalls', crit: DATA.stalls.length > 0 },
     { value: DATA.stalls.reduce((sum, s) => sum + (s[1] - s[0]), 0) + 's', label: 'Stall-Zeit gesamt', crit: false },
+    { value: DATA.cpuLoad.length ? DATA.maxCpuLoad.toLocaleString('de-DE') : 'n/a', label: 'Höchste CPU-Last (1min, Testrechner)', crit: false },
   ];
   statRow.innerHTML = stats.map(s => `
     <div class="stat-tile">
@@ -280,6 +294,54 @@
       <div class="item"><span class="swatch stall"></span>Heartbeat-Stall</div>
       <div class="item"><span class="swatch threshold"></span>Spike-Schwelle (${DATA.spikeThresholdMs} ms)</div>
     `;
+  }
+
+  // ---- CPU-Last-Chart: eigenes Panel, eigene (lineare statt logarithmische)
+  // Skala -- Load-Werte haben nicht denselben Größenordnungs-Spread wie Latenz,
+  // linear liest sich hier intuitiver. Ältere Ergebnisse ohne cpu_load.log
+  // (vor Einführung dieses Features) blenden das ganze Panel einfach aus,
+  // statt einen dauerhaft leeren Chart zu zeigen.
+  const cpuPanel = document.getElementById('cpu-panel');
+  if (DATA.cpuLoad.length === 0) {
+    cpuPanel.remove();
+  } else {
+    const cpuSvg = document.getElementById('cpu-chart');
+    const W = 1000, H = 180, ML = 56, MR = 12, MT = 12, MB = 28;
+    const plotW = W - ML - MR, plotH = H - MT - MB;
+    const duration = Math.max(DATA.duration, 1);
+    const maxLoad = Math.max(Math.ceil(DATA.maxCpuLoad), 1);
+
+    const xScale = t => ML + (t / duration) * plotW;
+    const yScale = load => MT + plotH - (Math.min(load, maxLoad) / maxLoad) * plotH;
+
+    let cpuContent = '';
+
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const val = (maxLoad / yTicks) * i;
+      const y = yScale(val);
+      cpuContent += `<line class="grid-line" x1="${ML}" x2="${W - MR}" y1="${y}" y2="${y}"/>`;
+      cpuContent += `<text class="axis-label" x="${ML - 8}" y="${y + 3}" text-anchor="end">${val.toLocaleString('de-DE', { maximumFractionDigits: 1 })}</text>`;
+    }
+
+    const xTicks = 5;
+    for (let i = 0; i <= xTicks; i++) {
+      const t = (duration / xTicks) * i;
+      const x = xScale(t);
+      cpuContent += `<text class="axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${fmtWallClock(DATA.startEpoch + t)}</text>`;
+    }
+
+    // Dieselben Stall-Bereiche wie im Latenz-Chart -- für den direkten
+    // Blick "war der Testrechner gerade selbst busy, als der Stall auftrat?".
+    DATA.stalls.forEach(([s, e]) => {
+      const x1 = xScale(Math.max(s, 0)), x2 = Math.max(xScale(e), x1 + 2);
+      cpuContent += `<rect class="stall-rect" x="${x1}" y="${MT}" width="${x2 - x1}" height="${plotH}"/>`;
+    });
+
+    const points = DATA.cpuLoad.map(p => xScale(p[0]) + ',' + yScale(p[1])).join(' ');
+    cpuContent += `<polyline class="lat-line" style="stroke:var(--read-color)" points="${points}"/>`;
+
+    cpuSvg.innerHTML = cpuContent;
   }
 
   // ---- Ereignis-Tabellen: dieselbe Anomalie-Timeline, die analyze_watch()

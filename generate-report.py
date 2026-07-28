@@ -235,6 +235,27 @@ def parse_latency_series(path):
     return series
 
 
+def parse_cpu_load_series(path, start_epoch):
+    """Liest cpu_load.log ('<epoch> <load1>' je Zeile, vom watch-Heartbeat-Prozess
+    mitgeschrieben) und baut eine nach Zeit sortierte [sekunde, load]-Liste,
+    Sekunden relativ zu start_epoch -- dieselbe Zeitbasis wie latency/stalls,
+    damit alle drei im selben Chart-Koordinatensystem landen."""
+    series = []
+    if not os.path.exists(path):
+        return series
+    with open(path) as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) != 2:
+                continue
+            try:
+                epoch, load = int(parts[0]), float(parts[1])
+            except ValueError:
+                continue
+            series.append([epoch - start_epoch, load])
+    return series
+
+
 def parse_heartbeat_stalls(path):
     """Liest heartbeat.log ('<epoch> OK'/'<epoch> STALL' je Zeile) und fasst
     aufeinanderfolgende STALL-Zeilen zu Intervallen [start_epoch, end_epoch]
@@ -305,12 +326,16 @@ def build_watch_report(label, out_path):
     # Stalls relativ zum Laufstart wie die Latenz-Zeitreihe (Sekunden seit
     # start_epoch), damit beides im selben Koordinatensystem im Chart landet.
     stalls = [[s - start_epoch, e - start_epoch] for s, e in stalls_epoch]
+    cpu_load = parse_cpu_load_series(os.path.join(outdir, "cpu_load.log"), start_epoch)
 
     all_points = latency["read"] + latency["write"]
     max_lat_ms = max((p[1] for p in all_points), default=0)
+    max_cpu_load = max((p[1] for p in cpu_load), default=0)
     duration = max((p[0] for p in all_points), default=0)
     if stalls:
         duration = max(duration, stalls[-1][1])
+    if cpu_load:
+        duration = max(duration, cpu_load[-1][0])
 
     # Einzelne Spikes als Liste statt nur eines Zählers -- der Report soll
     # mindestens so viel Detail zeigen wie die Terminal-Anomalie-Timeline
@@ -334,7 +359,9 @@ def build_watch_report(label, out_path):
         "latency": latency,
         "stalls": stalls,
         "spikes": spikes,
+        "cpuLoad": cpu_load,
         "maxLatencyMs": round(max_lat_ms, 3),
+        "maxCpuLoad": round(max_cpu_load, 2),
         "errorCount": parse_error_count(os.path.join(outdir, "watch-status.log")),
     }
 
