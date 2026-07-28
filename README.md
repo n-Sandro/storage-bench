@@ -76,7 +76,7 @@ Die Testdatei (`<target>/fio-testfile`, Größe `--size`, Default 4G) wird beim 
 
 `--target` und `--device` schließen sich aus. Bei `--device` läuft vorab (falls `smartctl` installiert ist) ein SMART-Snapshot vor und nach dem Lauf.
 
-**Ausgabe:** pro Teiltest `<name>.json` (fio-Rohdaten) und `<name>.log` (fio-Konsolenausgabe), außerdem `summary.csv` (eine Zeile je Test×Richtung) und eine Terminal-Zusammenfassung.
+**Ausgabe:** pro Teiltest `<name>.json` (fio-Rohdaten) und `<name>.log` (leer, außer bei Fehlern/Warnungen), außerdem `summary.csv` (eine Zeile je Test×Richtung) und eine Terminal-Zusammenfassung — Details zu jeder einzelnen Datei in der [Log-Referenz](#log-referenz-was-steht-in-welcher-datei) weiter unten.
 
 ---
 
@@ -122,7 +122,7 @@ Anders als `run`: kein Satz einzelner Teiltests, sondern **ein** durchgehender f
 | `--force` | aus | Vorhandenes Label überschreiben |
 | `--dry-run` | aus | Nur zeigen, was ausgeführt würde |
 
-**Ausgabe** unter `results/<label>/`: `watch-status.log` (kompletter Live-Verlauf inkl. fio-Endstatistik — läuft alles über `tee`, siehe oben), `<label>_lat.1.log` (Latenz-Zeitreihe, Basis der Anomalie-Timeline und des watch-Reports), `<label>_clat.1.log`/`_slat.1.log` (von fio mitgeschrieben, ungenutzt), `heartbeat.log`, `start_epoch.txt`/`start_time.txt`, `spike_threshold_ms.txt`/`heartbeat_timeout_s.txt` (für einen späteren `report`-Aufruf, siehe unten). Kein `summary.csv` — `watch` ist nicht für den `compare`-Vergleich gedacht.
+**Ausgabe** unter `results/<label>/`: `watch-status.log`, `heartbeat.log`, `cpu_load.log`, `<label>_lat.1.log` (+ `_clat`/`_slat`-Varianten), `start_epoch.txt`/`start_time.txt`, `spike_threshold_ms.txt`/`heartbeat_timeout_s.txt` — was genau in jeder einzelnen Datei steht, siehe die [Log-Referenz](#log-referenz-was-steht-in-welcher-datei) weiter unten. Kein `summary.csv` — `watch` ist nicht für den `compare`-Vergleich gedacht.
 
 ---
 
@@ -209,7 +209,7 @@ results/
 │
 ├── <label>/                              (von watch, statt obigem)
 │   ├── watch-status.log
-│   ├── heartbeat.log
+│   ├── heartbeat.log / cpu_load.log
 │   ├── <label>_lat.1.log / _clat.1.log / _slat.1.log
 │   ├── start_epoch.txt / start_time.txt
 │   └── spike_threshold_ms.txt / heartbeat_timeout_s.txt
@@ -219,6 +219,35 @@ results/
 ```
 
 `results/` ist nicht Teil des Git-Repos (`.gitignore`) — es sind lokale Messergebnisse, keine Projektdateien.
+
+### Log-Referenz: was steht in welcher Datei
+
+**Von `run`, pro Teiltest (`<test>` = `seq_read`, `seq_write`, ...):**
+
+| Datei | Format | Inhalt |
+|---|---|---|
+| `<test>.json` | fio-JSON (`--output-format=json`) | Der vollständige fio-Report für diesen Teiltest — bw/iops/Latenz-Perzentile/job-options/... Die eigentliche Datenquelle für Terminal-Zusammenfassung, `summary.csv` und `report.html`. |
+| `<test>.log` | Klartext | fios **stderr** — leer im Erfolgsfall, gefüllt mit Warnungen/Fehlermeldungen, falls beim Teiltest etwas schiefging (z.B. ungültige `--ioengine`, I/O-Fehler). `--output` auf dem fio-Aufruf leitet die eigentliche (reguläre) Ausgabe komplett in die `.json`-Datei um — stdout ist bei `--output-format=json` deshalb grundsätzlich leer, stderr bleibt davon unberührt und ist die einzig sinnvolle Quelle für diese Datei. |
+| `summary.csv` | CSV | Eine Zeile je Test×Richtung (`label,test,direction,bw_MBps,iops,avg_lat_ms,p99_lat_ms`), erst **nach** allen Teiltests aus den `.json`-Dateien zusammengestellt. |
+| `smart-before.txt` / `smart-after.txt` | Klartext | Nur bei `--device` + installiertem `smartctl`: roher `smartctl -a`-Output vor bzw. nach der gesamten Suite. |
+
+**Von `watch`:**
+
+| Datei | Format | Inhalt |
+|---|---|---|
+| `watch-status.log` | Klartext | Kompletter `tee`-Mitschnitt von fios stdout: periodische Live-Ticks (`--eta-newline`) plus die menschenlesbare Endstatistik am Schluss. Kein JSON — anders als `run` nutzt `watch` bewusst kein `--output-format=json`, weil sonst (wie beim `<test>.log`-Fix oben) stdout leer wäre und der Live-Status verschwände. Quelle für die I/O-Fehleranzahl im watch-Report (`errors: total=N` darin). |
+| `heartbeat.log` | `<epoch> OK\|STALL` | Eine Zeile je Puls-Check (alle `--heartbeat-interval` Sekunden), unabhängig von fio geschrieben. Basis der "Stalls im Heartbeat"-Auswertung (Terminal und Report). |
+| `cpu_load.log` | `<epoch> <load1>` | Eine Zeile je Puls-Check, 1-Minuten-Load-Average aus `/proc/loadavg`, vom selben Hintergrundprozess wie `heartbeat.log` mitgeschrieben. Bewusst nur in die Datei, keine Terminal-Ausgabe — ein Versuch, das live auszugeben, kollidierte mit fios eigener Tick-Zeile (zwei unsynchronisierte Prozesse auf demselben Terminal, teils mitten in einer Carriage-Return-Zeile). Aktuell von keinem Auswertungsschritt automatisch gelesen — zum manuellen Abgleich, falls ein Latenz-Spike eher an CPU-Last des Testrechners als am Storage liegen könnte. |
+| `<label>_lat.1.log` | `zeit_ms, latenz_ns, richtung, blockgröße, offset` | Von `--write_lat_log`/`--log_avg_msec=1000`: eine gemittelte Zeile pro Sekunde und Richtung (0=read/1=write/2=trim). **Die** Datei für die Latenz-Zeitreihe — liest sowohl `analyze_watch()` im Terminal als auch der watch-Report daraus. |
+| `<label>_clat.1.log` / `_slat.1.log` | wie oben | Von fio automatisch mit `--write_lat_log` mitgeschrieben (Completion- bzw. Submission-Latenz statt Gesamtlatenz), aber von `storage-bench.sh` nirgends ausgewertet. |
+| `start_epoch.txt` | eine Zahl | Unix-Timestamp (`date +%s`) bei Laufstart — Referenzpunkt, um Sekunden-seit-Start in Wanduhrzeit umzurechnen (Terminal-Anomalie-Timeline, watch-Report-Chart). |
+| `start_time.txt` | eine Zeile | Menschenlesbarer `date`-Output bei Laufstart, nur zur Anzeige. |
+| `spike_threshold_ms.txt` | eine Zahl | Der bei diesem Lauf tatsächlich verwendete `--spike-threshold`-Wert — nur als Shell-Variable im laufenden Prozess bekannt und für einen späteren, separaten `report`-Aufruf sonst verloren. |
+| `heartbeat_timeout_s.txt` | eine Zahl | Dasselbe für `--heartbeat-timeout` (beschriftet die "Stalls"-Schwelle in der Ereignis-Tabelle des watch-Reports). |
+
+**Von `compare`:** `compare_<a>_vs_<b>.csv` — `test,direction,bw_before_MBps,bw_after_MBps,delta_pct,regression`, eine Zeile je Test×Richtung, die in beiden verglichenen Labels existiert.
+
+**Von `report`:** nur `report.html` (oder der Pfad aus `--out`) — liest ausschließlich bereits vorhandene Dateien, schreibt selbst nichts unter `results/<label>/`.
 
 ---
 
