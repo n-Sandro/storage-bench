@@ -73,6 +73,7 @@ Die Testdatei (`<target>/fio-testfile`, Größe `--size`, Default 4G) wird beim 
 | `--ioengine <engine>` | `libaio` | fio-I/O-Engine (außer bei den Latenz-Tests, siehe oben) |
 | `--force` | aus | Vorhandenes Label überschreiben |
 | `--dry-run` | aus | Nur zeigen, was ausgeführt würde |
+| `-h`, `--help` | – | Hilfe anzeigen und beenden |
 
 `--target` und `--device` schließen sich aus. Bei `--device` läuft vorab (falls `smartctl` installiert ist) ein SMART-Snapshot vor und nach dem Lauf.
 
@@ -119,6 +120,7 @@ Anders als `run`: kein Satz einzelner Teiltests, sondern **ein** durchgehender f
 | `--ioengine <engine>` | `libaio` | fio-I/O-Engine |
 | `--force` | aus | Vorhandenes Label überschreiben |
 | `--dry-run` | aus | Nur zeigen, was ausgeführt würde |
+| `-h`, `--help` | – | Hilfe anzeigen und beenden |
 
 **Ausgabe** unter `results/<label>/`: `watch-status.log`, `heartbeat.log`, `cpu_load.log`, `<label>_lat.1.log` (+ `_clat`/`_slat`-Varianten), `start_epoch.txt`/`start_time.txt`, `spike_threshold_ms.txt`/`heartbeat_timeout_s.txt` — was genau in jeder einzelnen Datei steht, siehe die [Log-Referenz](#log-referenz-was-steht-in-welcher-datei) weiter unten. Kein `summary.csv` — `watch` ist nicht für den `compare`-Vergleich gedacht.
 
