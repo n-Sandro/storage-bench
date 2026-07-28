@@ -10,6 +10,7 @@ Browser via JS, dieses Skript liefert nur die Daten.
 """
 import sys
 import os
+import re
 import json
 import glob
 import datetime
@@ -264,6 +265,23 @@ def parse_heartbeat_stalls(path):
     return stalls
 
 
+def parse_error_count(path):
+    """Liest die fio-Endstatistik aus watch-status.log (Klartext, kein JSON --
+    watch nutzt bewusst kein --output-format=json/--output, siehe storage-bench.sh)
+    und holt die Fehleranzahl aus fios 'errors : total=N'-Zeile. Ein Regex auf
+    Klartext ist fragiler als ein JSON-Feld, aber die einzige Quelle, die hier zur
+    Verfügung steht. --continue_on_error=all sorgt dafür, dass echte I/O-Fehler
+    während eines Failovers den Lauf nicht abbrechen, sondern nur gezählt werden --
+    ohne diesen Wert wäre "gab es tatsächliche Fehler" im Report unsichtbar,
+    obwohl es bei einem echten Ausfall mindestens so wichtig ist wie die Latenz."""
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        content = f.read()
+    m = re.search(r'errors\s*:\s*total=(\d+)', content)
+    return int(m.group(1)) if m else None
+
+
 def build_watch_report(label, out_path):
     """Baut den Zeitreihen-Report für ein einzelnes watch-Label. Analog zum
     run/compare-Pfad in main(): Daten einlesen -> JSON bauen -> Platzhalter im
@@ -279,6 +297,7 @@ def build_watch_report(label, out_path):
         die(f"'{label}' hat kein start_epoch.txt — unvollständiger watch-Lauf?")
     start_epoch = int(start_epoch_raw)
     spike_threshold_ms = int(read_file("spike_threshold_ms.txt", "100"))
+    heartbeat_timeout_s = int(read_file("heartbeat_timeout_s.txt", "2"))
 
     lat_files = glob.glob(os.path.join(outdir, f"{label}_lat.1.log"))
     latency = parse_latency_series(lat_files[0]) if lat_files else {"read": [], "write": []}
@@ -293,16 +312,30 @@ def build_watch_report(label, out_path):
     if stalls:
         duration = max(duration, stalls[-1][1])
 
+    # Einzelne Spikes als Liste statt nur eines Zählers -- der Report soll
+    # mindestens so viel Detail zeigen wie die Terminal-Anomalie-Timeline
+    # (analyze_watch() im Skript), die jeden Ausreißer einzeln mit Zeit auflistet.
+    spikes = sorted(
+        ([t, lat, direction]
+         for direction in ("read", "write")
+         for t, lat in latency[direction]
+         if lat > spike_threshold_ms),
+        key=lambda s: s[0],
+    )
+
     watch_data = {
         "label": label,
+        "startEpoch": start_epoch,
         "startTime": read_file("start_time.txt", "unbekannt"),
         "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "duration": duration,
         "spikeThresholdMs": spike_threshold_ms,
+        "heartbeatTimeoutS": heartbeat_timeout_s,
         "latency": latency,
         "stalls": stalls,
+        "spikes": spikes,
         "maxLatencyMs": round(max_lat_ms, 3),
-        "spikeCount": sum(1 for p in all_points if p[1] > spike_threshold_ms),
+        "errorCount": parse_error_count(os.path.join(outdir, "watch-status.log")),
     }
 
     if not os.path.exists(WATCH_TEMPLATE_PATH):
@@ -322,8 +355,8 @@ def build_watch_report(label, out_path):
         f.write(html_out)
 
     print(f"Watch-Report geschrieben: {out_path}")
-    print(f"Label: {label} — {watch_data['spikeCount']} Latenz-Spike(s), "
-          f"{len(stalls)} Stall(s) erkannt")
+    print(f"Label: {label} — {len(spikes)} Latenz-Spike(s), "
+          f"{len(stalls)} Stall(s), {watch_data['errorCount'] or 0} I/O-Fehler erkannt")
 
 
 def main():

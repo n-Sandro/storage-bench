@@ -603,10 +603,11 @@ cmd_watch() {
   mkdir -p "$outdir"
   echo "$start_epoch" > "${outdir}/start_epoch.txt"
   date > "${outdir}/start_time.txt"
-  # Für generate-report.py: SPIKE_THRESHOLD_MS existiert sonst nur als Shell-
-  # Variable dieses Laufs und wäre für einen späteren 'report'-Aufruf (eigener
-  # Prozess) sonst nicht mehr bekannt.
+  # Für generate-report.py: SPIKE_THRESHOLD_MS/HEARTBEAT_TIMEOUT existieren sonst
+  # nur als Shell-Variablen dieses Laufs und wären für einen späteren 'report'-
+  # Aufruf (eigener Prozess) sonst nicht mehr bekannt.
   echo "$SPIKE_THRESHOLD_MS" > "${outdir}/spike_threshold_ms.txt"
+  echo "$HEARTBEAT_TIMEOUT" > "${outdir}/heartbeat_timeout_s.txt"
 
   log "Start: Label='$LABEL', Dauer=${DURATION}s, Ziel=$TARGET_DIR"
   log "Wanduhr-Zeitpunkt des eigentlichen Umschwenks separat notieren (z.B. wann Failover ausgelöst wurde)."

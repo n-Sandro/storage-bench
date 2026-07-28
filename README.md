@@ -292,8 +292,9 @@ Zeitreihe — das ist die Datei, die `analyze_watch` für die Anomalie-Timeline 
 `--write_lat_log` schreibt daneben noch `<label>_clat.1.log` und `<label>_slat.1.log`
 mit, die aber von `storage-bench.sh` selbst nicht ausgewertet werden),
 `heartbeat.log` (Puls-Protokoll), `start_epoch.txt` / `start_time.txt`
-(Referenzzeitpunkt für die Wanduhr-Umrechnung), `spike_threshold_ms.txt` (der bei
-diesem Lauf tatsächlich verwendete `--spike-threshold`-Wert, für einen späteren
+(Referenzzeitpunkt für die Wanduhr-Umrechnung), `spike_threshold_ms.txt` /
+`heartbeat_timeout_s.txt` (die bei diesem Lauf tatsächlich verwendeten
+`--spike-threshold`-/`--heartbeat-timeout`-Werte, für einen späteren
 `report`-Aufruf — siehe unten). Kein `summary.csv` — `watch` ist für die
 Anomalie-Timeline gedacht, nicht für den `report`-Vergleich.
 
@@ -432,10 +433,21 @@ der Rest des Labels bzw. der übrigen Labels wird trotzdem ausgewertet.
 erzeugt wurde) baut automatisch einen eigenständigen **Zeitreihen-Report** statt
 des obigen run/compare-Reports — eigenes Template (`report-template-watch.html`),
 weil die Datenform komplett anders ist (Latenzverlauf über Zeit statt Testarten
-im Vergleich). Zeigt Latenz (Lesen/Schreiben) als Liniendiagramm über die
-gesamte `--duration`, Heartbeat-Stalls als rot schattierte Zeitbereiche, und die
-Spike-Schwelle als gestrichelte Referenzlinie. Kein Mischen mit `run`-Labels in
-einem Aufruf.
+im Vergleich). Zeigt:
+- Kennzahlen-Kacheln: höchste Latenz, Anzahl Spikes, **I/O-Fehler** (aus fios
+  `errors: total=N`, relevant weil `--continue_on_error=all` echte Fehler
+  während des Failovers nicht abbricht, sondern nur zählt), Anzahl/Gesamtdauer
+  der Heartbeat-Stalls.
+- Latenzverlauf (Lesen/Schreiben) als Liniendiagramm über die gesamte
+  `--duration`, logarithmische y-Achse, **x-Achse in Wanduhrzeit** (nicht
+  Sekunden seit Start — direkt gegen externe Logs wie `multipathd -ll`/`dmesg`
+  abgleichbar), Heartbeat-Stalls als rot schattierte Zeitbereiche, Spike-Schwelle
+  als gestrichelte Referenzlinie.
+- **Ereignis-Tabelle** (aufklappbar): jeder einzelne Latenz-Spike und
+  Heartbeat-Stall einzeln mit Uhrzeit — dieselbe Anomalie-Timeline wie im
+  Terminal (`analyze_watch()`), zusätzlich im Report.
+
+Kein Mischen mit `run`-Labels in einem Aufruf.
 
 ---
 
@@ -558,7 +570,7 @@ results/
 │   ├── watch-status.log, heartbeat.log
 │   ├── <label>_lat.1.log                 ← wird von analyze_watch ausgewertet
 │   ├── <label>_clat.1.log / _slat.1.log  ← von fio mitgeschrieben, ungenutzt
-│   ├── spike_threshold_ms.txt            ← für einen späteren watch-`report`
+│   ├── spike_threshold_ms.txt / heartbeat_timeout_s.txt  ← für watch-`report`
 │   └── start_epoch.txt / start_time.txt
 │
 ├── compare_<a>_vs_<b>.csv                ← von `compare`
@@ -662,11 +674,14 @@ Nur relevant, wenn du den Report selbst erweitern willst.
   getrenntes, eigenständiges Template mit eigenem Datenkanal (`__WATCH_DATA__`
   statt `__REPORT_DATA__`) — nichts oben Beschriebenes gilt dafür. Baufunktionen
   in `generate-report.py`: `is_watch_label()` (Erkennung), `parse_latency_series()`
-  / `parse_heartbeat_stalls()` (Rohdaten einlesen), `build_watch_report()`
+  / `parse_heartbeat_stalls()` / `parse_error_count()` (Rohdaten einlesen —
+  letzteres per Regex aus dem Klartext von `watch-status.log`, da `watch`
+  bewusst kein `--output-format=json` nutzt, siehe oben), `build_watch_report()`
   (zusammensetzen). Die y-Achse des Latenz-Charts ist ebenfalls logarithmisch,
   aber im Template-JS selbst berechnet (fester Boden 0.01ms, Deckel = nächste
   Zehnerpotenz über Maximalwert/Spike-Schwelle) — kein gemeinsamer Code mit
-  `computeBounds()`.
+  `computeBounds()`. Die x-Achse zeigt Wanduhrzeit (`fmtWallClock()` im
+  Template-JS, aus `DATA.startEpoch` + Sekunden seit Laufstart).
 
 ---
 

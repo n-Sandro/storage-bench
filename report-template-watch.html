@@ -103,6 +103,19 @@
 
   .empty-note { font-size: 13px; color: var(--ink-muted); }
 
+  details.raw-table summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 4px 0; color: var(--ink-secondary); }
+  details.raw-table summary:hover { color: var(--ink-primary); }
+  details.raw-table[open] summary { margin-bottom: 12px; }
+  .glossary-subhead { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--baseline);
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid var(--grid); color: var(--ink-primary); }
+  td.num, th.num { text-align: right; font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
   footer { border-top: 1px solid var(--border); padding-top: 18px; font-size: 12px; color: var(--ink-muted); }
 </style>
 
@@ -131,6 +144,11 @@
       <div class="chart-legend" id="chart-legend"></div>
     </section>
 
+    <details class="raw-table">
+      <summary>Ereignisse (Latenz-Spikes &amp; Heartbeat-Stalls)</summary>
+      <div id="events-body"></div>
+    </details>
+
     <footer id="footer"></footer>
 
   </div>
@@ -150,6 +168,18 @@
     const m = Math.floor(sec / 60), s = sec % 60;
     return m + ':' + String(s).padStart(2, '0');
   }
+  // Wanduhrzeit aus Sekunden seit Laufstart -- DATA.startEpoch ist ein
+  // zeitzonenunabhängiger Unix-Timestamp (von 'date +%s' auf dem Testrechner),
+  // new Date() rendert ihn in der Zeitzone des Browsers, der den Report gerade
+  // anschaut. Gleiche Charakteristik wie analyze_watch()'s "date -d @epoch" im
+  // Terminal (dort: Zeitzone des Testrechners) -- beim Abgleich mit externen
+  // Logs (multipathd/dmesg) im Zweifel die Zeitzone gegenchecken, falls Report
+  // und Log-Quelle auf unterschiedlichen Rechnern/Zeitzonen entstanden sind.
+  function fmtWallClock(epochSec) {
+    const d = new Date(epochSec * 1000);
+    return [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map(n => String(n).padStart(2, '0')).join(':');
+  }
 
   document.getElementById('report-h1').textContent = 'Storage-Watch: ' + DATA.label;
 
@@ -163,7 +193,8 @@
   const statRow = document.getElementById('stat-row');
   const stats = [
     { value: DATA.maxLatencyMs.toLocaleString('de-DE') + ' ms', label: 'Höchste gemessene Latenz', crit: DATA.maxLatencyMs > DATA.spikeThresholdMs },
-    { value: String(DATA.spikeCount), label: `Latenz-Spikes (> ${DATA.spikeThresholdMs} ms)`, crit: DATA.spikeCount > 0 },
+    { value: String(DATA.spikes.length), label: `Latenz-Spikes (> ${DATA.spikeThresholdMs} ms)`, crit: DATA.spikes.length > 0 },
+    { value: DATA.errorCount === null ? 'n/a' : String(DATA.errorCount), label: 'I/O-Fehler (fio)', crit: DATA.errorCount > 0 },
     { value: String(DATA.stalls.length), label: 'Heartbeat-Stalls', crit: DATA.stalls.length > 0 },
     { value: DATA.stalls.reduce((sum, s) => sum + (s[1] - s[0]), 0) + 's', label: 'Stall-Zeit gesamt', crit: false },
   ];
@@ -213,12 +244,14 @@
       svgContent += `<text class="axis-label" x="${ML - 8}" y="${y + 3}" text-anchor="end">${label}</text>`;
     }
 
-    // X-Achse: ~5 gleichmäßig verteilte Zeitmarken
+    // X-Achse: ~5 gleichmäßig verteilte Zeitmarken, als Wanduhrzeit -- direkt
+    // gegen externe Logs (multipathd/dmesg/Array-Log) abgleichbar, ohne erst
+    // "Startzeit + t" im Kopf ausrechnen zu müssen.
     const xTicks = 5;
     for (let i = 0; i <= xTicks; i++) {
       const t = (duration / xTicks) * i;
       const x = xScale(t);
-      svgContent += `<text class="axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${fmtTime(t)}</text>`;
+      svgContent += `<text class="axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${fmtWallClock(DATA.startEpoch + t)}</text>`;
     }
 
     // Stall-Bereiche (hinter allem anderen)
@@ -248,6 +281,41 @@
       <div class="item"><span class="swatch threshold"></span>Spike-Schwelle (${DATA.spikeThresholdMs} ms)</div>
     `;
   }
+
+  // ---- Ereignis-Tabellen: dieselbe Anomalie-Timeline, die analyze_watch()
+  // schon im Terminal ausgibt, hier zusätzlich als Tabelle im Report -- vorher
+  // stand im Report nur eine Zahl ("3 Spikes"), nicht wann genau.
+  const eventsBody = document.getElementById('events-body');
+  let eventsHtml = `<div class="glossary-subhead" style="margin-bottom:8px">Latenz-Spikes (&gt; ${DATA.spikeThresholdMs} ms)</div>`;
+  if (DATA.spikes.length === 0) {
+    eventsHtml += '<p class="empty-note">Keine Latenz-Ausreißer über der Schwelle gefunden.</p>';
+  } else {
+    eventsHtml += '<div class="table-scroll"><table><thead><tr><th>Uhrzeit</th><th>Richtung</th><th class="num">Latenz (ms)</th></tr></thead><tbody>';
+    DATA.spikes.forEach(([t, lat, dir]) => {
+      eventsHtml += `<tr>
+        <td class="mono">${fmtWallClock(DATA.startEpoch + t)} <span style="color:var(--ink-muted)">(t+${fmtTime(t)})</span></td>
+        <td>${dir === 'read' ? 'Lesen' : 'Schreiben'}</td>
+        <td class="num mono">${lat.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</td>
+      </tr>`;
+    });
+    eventsHtml += '</tbody></table></div>';
+  }
+
+  eventsHtml += `<div class="glossary-subhead" style="margin:18px 0 8px">Heartbeat-Stalls (&gt; ${DATA.heartbeatTimeoutS}s ohne Antwort)</div>`;
+  if (DATA.stalls.length === 0) {
+    eventsHtml += '<p class="empty-note">Keine Stalls im Heartbeat gefunden.</p>';
+  } else {
+    eventsHtml += '<div class="table-scroll"><table><thead><tr><th>Start</th><th>Ende</th><th class="num">Dauer (s)</th></tr></thead><tbody>';
+    DATA.stalls.forEach(([s, e]) => {
+      eventsHtml += `<tr>
+        <td class="mono">${fmtWallClock(DATA.startEpoch + s)}</td>
+        <td class="mono">${fmtWallClock(DATA.startEpoch + e)}</td>
+        <td class="num mono">${e - s}</td>
+      </tr>`;
+    });
+    eventsHtml += '</tbody></table></div>';
+  }
+  eventsBody.innerHTML = eventsHtml;
 
   document.getElementById('footer').innerHTML =
     `Erzeugt mit generate-report.py aus storage-bench.sh watch-Ergebnissen (${esc(DATA.generated)}).`;
