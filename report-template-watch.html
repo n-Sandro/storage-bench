@@ -1,0 +1,255 @@
+<!--
+  Vorlage für storage-bench.sh report bei einem einzelnen watch-Label (siehe
+  build_watch_report() in generate-report.py). Eigenständig und unabhängig von
+  report-template.html (run/compare) — andere Datenform (Zeitreihe statt
+  Kategorien), daher bewusst kein gemeinsames Template. __REPORT_TITLE__ und
+  /*__WATCH_DATA__*/ werden von generate-report.py per String-Replace ersetzt.
+-->
+<title>__REPORT_TITLE__</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page:            #f9f9f7;
+    --surface-1:       #fcfcfb;
+    --ink-primary:     #0b0b0b;
+    --ink-secondary:   #52514e;
+    --ink-muted:       #898781;
+    --grid:            #e1e0d9;
+    --baseline:        #c3c2b7;
+    --border:          rgba(11,11,11,0.10);
+    --status-critical: #d03b3b;
+    --status-good:     #006300;
+    --read-color:      #2a78d6;
+    --write-color:     #eb6834;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      color-scheme: dark;
+      --page:            #0d0d0d;
+      --surface-1:       #1a1a19;
+      --ink-primary:     #ffffff;
+      --ink-secondary:   #c3c2b7;
+      --ink-muted:       #898781;
+      --grid:            #2c2c2a;
+      --baseline:        #383835;
+      --border:          rgba(255,255,255,0.10);
+      --status-critical: #d03b3b;
+      --status-good:     #0ca30c;
+      --read-color:      #3987e5;
+      --write-color:     #d95926;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  .viz-root {
+    background: var(--page);
+    color: var(--ink-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    padding: clamp(20px, 4vw, 56px);
+    min-height: 100vh;
+  }
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px; }
+
+  header.report-head {
+    display: flex; flex-direction: column; gap: 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 24px;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 700; letter-spacing: -0.01em; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-secondary); }
+  .meta-row b { color: var(--ink-primary); font-weight: 600; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat-tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .stat-tile .value { font-size: 24px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .stat-tile .value.crit { color: var(--status-critical); }
+  .stat-tile .label { font-size: 12.5px; color: var(--ink-secondary); margin-top: 4px; }
+
+  section.panel {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px clamp(16px, 3vw, 28px) 28px;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  h2 { margin: 0; font-size: 17px; font-weight: 700; }
+  .panel-note { font-size: 12.5px; color: var(--ink-muted); margin: 0 0 18px; max-width: 70ch; }
+
+  .chart-wrap { width: 100%; overflow-x: auto; }
+  #watch-chart { width: 100%; height: auto; display: block; }
+  .axis-label { font-size: 10.5px; fill: var(--ink-muted); font-family: ui-monospace, monospace; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .threshold-line { stroke: var(--status-critical); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.6; }
+  .stall-rect { fill: var(--status-critical); opacity: 0.16; }
+  .lat-line { fill: none; stroke-width: 1.5; }
+  .lat-line.read { stroke: var(--read-color); }
+  .lat-line.write { stroke: var(--write-color); }
+
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12.5px; color: var(--ink-secondary); }
+  .chart-legend .item { display: flex; align-items: center; gap: 6px; }
+  .chart-legend .swatch { width: 14px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+  .chart-legend .swatch.stall { width: 10px; height: 10px; border-radius: 2px; background: var(--status-critical); opacity: 0.35; }
+  .chart-legend .swatch.threshold { border-top: 2px dashed var(--status-critical); height: 0; opacity: 0.6; }
+
+  .empty-note { font-size: 13px; color: var(--ink-muted); }
+
+  footer { border-top: 1px solid var(--border); padding-top: 18px; font-size: 12px; color: var(--ink-muted); }
+</style>
+
+<div class="viz-root">
+  <div class="page">
+
+    <header class="report-head">
+      <div class="eyebrow">storage-bench.sh · watch</div>
+      <h1 id="report-h1">Storage-Watch</h1>
+      <div class="meta-row" id="meta-row"></div>
+    </header>
+
+    <div class="stat-row" id="stat-row"></div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Latenzverlauf</h2>
+        <span class="panel-note" style="margin:0">logarithmische y-Achse</span>
+      </div>
+      <p class="panel-note">
+        Jeder Punkt eine einzelne I/O-Anfrage (aus <code class="mono">--write_lat_log</code>,
+        sekundengenau). Rot schattierte Bereiche = Heartbeat-Stalls (unabhängig von fio
+        gemessen), gestrichelte Linie = Spike-Schwelle.
+      </p>
+      <div class="chart-wrap"><svg id="watch-chart" viewBox="0 0 1000 320"></svg></div>
+      <div class="chart-legend" id="chart-legend"></div>
+    </section>
+
+    <footer id="footer"></footer>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  const DATA = /*__WATCH_DATA__*/;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  document.getElementById('report-h1').textContent = 'Storage-Watch: ' + DATA.label;
+
+  const metaRow = document.getElementById('meta-row');
+  metaRow.innerHTML = `
+    <span>Start: <b>${esc(DATA.startTime)}</b></span>
+    <span>Dauer erfasst: <b>${fmtTime(DATA.duration)}</b></span>
+    <span>Erzeugt: <b>${esc(DATA.generated)}</b></span>
+  `;
+
+  const statRow = document.getElementById('stat-row');
+  const stats = [
+    { value: DATA.maxLatencyMs.toLocaleString('de-DE') + ' ms', label: 'Höchste gemessene Latenz', crit: DATA.maxLatencyMs > DATA.spikeThresholdMs },
+    { value: String(DATA.spikeCount), label: `Latenz-Spikes (> ${DATA.spikeThresholdMs} ms)`, crit: DATA.spikeCount > 0 },
+    { value: String(DATA.stalls.length), label: 'Heartbeat-Stalls', crit: DATA.stalls.length > 0 },
+    { value: DATA.stalls.reduce((sum, s) => sum + (s[1] - s[0]), 0) + 's', label: 'Stall-Zeit gesamt', crit: false },
+  ];
+  statRow.innerHTML = stats.map(s => `
+    <div class="stat-tile">
+      <div class="value${s.crit ? ' crit' : ''}">${esc(s.value)}</div>
+      <div class="label">${esc(s.label)}</div>
+    </div>
+  `).join('');
+
+  // ---- Chart ----
+  const allPoints = DATA.latency.read.concat(DATA.latency.write);
+  const svg = document.getElementById('watch-chart');
+  const legend = document.getElementById('chart-legend');
+
+  if (allPoints.length === 0 && DATA.stalls.length === 0) {
+    svg.remove();
+    document.querySelector('.chart-wrap').innerHTML =
+      '<p class="empty-note">Keine Latenz- oder Heartbeat-Daten gefunden.</p>';
+  } else {
+    const W = 1000, H = 320, ML = 56, MR = 12, MT = 12, MB = 28;
+    const plotW = W - ML - MR, plotH = H - MT - MB;
+    const duration = Math.max(DATA.duration, 1);
+
+    // Log-Skala y-Achse: fester Boden 0.01ms (10µs), Deckel = nächste Zehnerpotenz
+    // über dem Maximum (Spitze oder Schwelle, je nachdem was größer ist) — sonst
+    // würde ein einzelner Stall-Ausreißer die normale Baseline unlesbar stauchen.
+    const minLat = 0.01;
+    const rawMax = Math.max(DATA.maxLatencyMs, DATA.spikeThresholdMs, 0.1);
+    const maxLat = Math.pow(10, Math.ceil(Math.log10(rawMax)));
+    const logMin = Math.log10(minLat), logMax = Math.log10(maxLat);
+
+    const xScale = t => ML + (t / duration) * plotW;
+    const yScale = lat => {
+      const clamped = Math.min(Math.max(lat, minLat), maxLat);
+      return MT + plotH - ((Math.log10(clamped) - logMin) / (logMax - logMin)) * plotH;
+    };
+
+    let svgContent = '';
+
+    // Y-Gridlines bei jeder Zehnerpotenz zwischen minLat und maxLat
+    for (let p = logMin; p <= logMax + 0.001; p++) {
+      const val = Math.pow(10, p);
+      const y = yScale(val);
+      svgContent += `<line class="grid-line" x1="${ML}" x2="${W - MR}" y1="${y}" y2="${y}"/>`;
+      const label = val >= 1 ? val.toLocaleString('de-DE') : val.toFixed(2);
+      svgContent += `<text class="axis-label" x="${ML - 8}" y="${y + 3}" text-anchor="end">${label}</text>`;
+    }
+
+    // X-Achse: ~5 gleichmäßig verteilte Zeitmarken
+    const xTicks = 5;
+    for (let i = 0; i <= xTicks; i++) {
+      const t = (duration / xTicks) * i;
+      const x = xScale(t);
+      svgContent += `<text class="axis-label" x="${x}" y="${H - 8}" text-anchor="middle">${fmtTime(t)}</text>`;
+    }
+
+    // Stall-Bereiche (hinter allem anderen)
+    DATA.stalls.forEach(([s, e]) => {
+      const x1 = xScale(Math.max(s, 0)), x2 = Math.max(xScale(e), x1 + 2);
+      svgContent += `<rect class="stall-rect" x="${x1}" y="${MT}" width="${x2 - x1}" height="${plotH}"/>`;
+    });
+
+    // Spike-Schwelle als gestrichelte Referenzlinie
+    const ty = yScale(DATA.spikeThresholdMs);
+    svgContent += `<line class="threshold-line" x1="${ML}" x2="${W - MR}" y1="${ty}" y2="${ty}"/>`;
+
+    // Latenz-Linien
+    ['read', 'write'].forEach(dir => {
+      const pts = DATA.latency[dir];
+      if (pts.length === 0) return;
+      const points = pts.map(p => xScale(p[0]) + ',' + yScale(p[1])).join(' ');
+      svgContent += `<polyline class="lat-line ${dir}" points="${points}"/>`;
+    });
+
+    svg.innerHTML = svgContent;
+
+    legend.innerHTML = `
+      <div class="item"><span class="swatch" style="background:var(--read-color)"></span>Lesen</div>
+      <div class="item"><span class="swatch" style="background:var(--write-color)"></span>Schreiben</div>
+      <div class="item"><span class="swatch stall"></span>Heartbeat-Stall</div>
+      <div class="item"><span class="swatch threshold"></span>Spike-Schwelle (${DATA.spikeThresholdMs} ms)</div>
+    `;
+  }
+
+  document.getElementById('footer').innerHTML =
+    `Erzeugt mit generate-report.py aus storage-bench.sh watch-Ergebnissen (${esc(DATA.generated)}).`;
+})();
+</script>

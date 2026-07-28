@@ -195,6 +195,137 @@ def load_label(label):
     return tests, fio_version, params, target_path or "?"
 
 
+# ---- watch-Report: eigener, komplett getrennter Pfad -----------------------
+# 'watch'-Ergebnisse sind eine Zeitreihe (Latenz über Zeit + Stall-Intervalle),
+# strukturell etwas anderes als die Kategorien-Daten von run/compare oben —
+# daher eigenes Template, eigenes JSON-Schema, eigene Baufunktion. Berührt
+# nichts von dem, was oben für run/compare gebaut wird.
+
+WATCH_TEMPLATE_PATH = os.path.join(SCRIPT_DIR, "report-template-watch.html")
+
+
+def is_watch_label(label):
+    """Ein watch-Lauf erzeugt heartbeat.log, ein run-Lauf nie — reicht als
+    eindeutiges Unterscheidungsmerkmal (beide Subcommands leeren ihren
+    Ergebnisordner vor dem Schreiben komplett, es kann also nie eine Mischung
+    aus beidem im selben Label-Ordner geben)."""
+    return os.path.exists(os.path.join(RESULTS_ROOT, label, "heartbeat.log"))
+
+
+def parse_latency_series(path):
+    """Liest <label>_lat.1.log (Format von fios --write_lat_log: 'zeit_ms,
+    latenz_ns, richtung, blockgröße, offset' je Zeile, richtung 0=read/1=write/
+    2=trim) und baut zwei nach Zeit sortierte [sekunde, latenz_ms]-Listen."""
+    series = {"read": [], "write": []}
+    if not os.path.exists(path):
+        return series
+    with open(path) as f:
+        for line in f:
+            parts = [p.strip() for p in line.strip().split(",")]
+            if len(parts) < 3:
+                continue
+            try:
+                t_ms, lat_ns = float(parts[0]), float(parts[1])
+            except ValueError:
+                continue
+            key = {"0": "read", "1": "write"}.get(parts[2])
+            if key:
+                series[key].append([round(t_ms / 1000, 3), round(lat_ns / 1e6, 4)])
+    return series
+
+
+def parse_heartbeat_stalls(path):
+    """Liest heartbeat.log ('<epoch> OK'/'<epoch> STALL' je Zeile) und fasst
+    aufeinanderfolgende STALL-Zeilen zu Intervallen [start_epoch, end_epoch]
+    zusammen — fürs Chart interessieren Zeiträume, nicht einzelne Pulse."""
+    stalls = []
+    cur_start = None
+    last_epoch = None
+    if not os.path.exists(path):
+        return stalls
+    with open(path) as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) != 2:
+                continue
+            try:
+                epoch = int(parts[0])
+            except ValueError:
+                continue
+            if parts[1] == "STALL":
+                if cur_start is None:
+                    cur_start = epoch
+                last_epoch = epoch
+            elif cur_start is not None:
+                stalls.append([cur_start, last_epoch])
+                cur_start = None
+    if cur_start is not None:
+        stalls.append([cur_start, last_epoch])
+    return stalls
+
+
+def build_watch_report(label, out_path):
+    """Baut den Zeitreihen-Report für ein einzelnes watch-Label. Analog zum
+    run/compare-Pfad in main(): Daten einlesen -> JSON bauen -> Platzhalter im
+    (eigenen) Template ersetzen -> Datei schreiben."""
+    outdir = os.path.join(RESULTS_ROOT, label)
+
+    def read_file(name, default=""):
+        p = os.path.join(outdir, name)
+        return open(p).read().strip() if os.path.exists(p) else default
+
+    start_epoch_raw = read_file("start_epoch.txt")
+    if not start_epoch_raw:
+        die(f"'{label}' hat kein start_epoch.txt — unvollständiger watch-Lauf?")
+    start_epoch = int(start_epoch_raw)
+    spike_threshold_ms = int(read_file("spike_threshold_ms.txt", "100"))
+
+    lat_files = glob.glob(os.path.join(outdir, f"{label}_lat.1.log"))
+    latency = parse_latency_series(lat_files[0]) if lat_files else {"read": [], "write": []}
+    stalls_epoch = parse_heartbeat_stalls(os.path.join(outdir, "heartbeat.log"))
+    # Stalls relativ zum Laufstart wie die Latenz-Zeitreihe (Sekunden seit
+    # start_epoch), damit beides im selben Koordinatensystem im Chart landet.
+    stalls = [[s - start_epoch, e - start_epoch] for s, e in stalls_epoch]
+
+    all_points = latency["read"] + latency["write"]
+    max_lat_ms = max((p[1] for p in all_points), default=0)
+    duration = max((p[0] for p in all_points), default=0)
+    if stalls:
+        duration = max(duration, stalls[-1][1])
+
+    watch_data = {
+        "label": label,
+        "startTime": read_file("start_time.txt", "unbekannt"),
+        "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "duration": duration,
+        "spikeThresholdMs": spike_threshold_ms,
+        "latency": latency,
+        "stalls": stalls,
+        "maxLatencyMs": round(max_lat_ms, 3),
+        "spikeCount": sum(1 for p in all_points if p[1] > spike_threshold_ms),
+    }
+
+    if not os.path.exists(WATCH_TEMPLATE_PATH):
+        die(f"Watch-Report-Template fehlt: {WATCH_TEMPLATE_PATH}")
+    with open(WATCH_TEMPLATE_PATH) as f:
+        template = f.read()
+
+    json_str = json.dumps(watch_data, ensure_ascii=False).replace("</", "<\\/")
+    # Gleiches XSS-Escaping wie im run/compare-Pfad unten: --label fließt roh
+    # in den <title> ein, bevor überhaupt JS aus dem Report läuft.
+    title = html.escape(f"Storage-Watch: {label}")
+    html_out = template.replace("__REPORT_TITLE__", title)
+    html_out = html_out.replace("/*__WATCH_DATA__*/", json_str)
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    with open(out_path, "w") as f:
+        f.write(html_out)
+
+    print(f"Watch-Report geschrieben: {out_path}")
+    print(f"Label: {label} — {watch_data['spikeCount']} Latenz-Spike(s), "
+          f"{len(stalls)} Stall(s) erkannt")
+
+
 def main():
     """Einstiegspunkt: Argumente parsen -> pro Label load_label() aufrufen ->
     Daten zu einem gemeinsamen JSON-Objekt zusammenführen (Tests, Rohdaten,
@@ -216,6 +347,17 @@ def main():
             if os.path.isdir(os.path.join(RESULTS_ROOT, d))
             and glob.glob(os.path.join(RESULTS_ROOT, d, "*.json"))
         )
+
+    # Ein einzelnes watch-Label -> eigener Zeitreihen-Report statt run/compare
+    # (siehe build_watch_report oben). Mehrere Labels gemischt mit einem
+    # watch-Label werden bewusst nicht unterstützt (fällt unten in load_label()
+    # einfach mit einem leeren Ergebnis für dieses Label durch) — kein
+    # sinnvoller Anwendungsfall, Zeitreihe und Kategorien-Vergleich lassen sich
+    # nicht in einem Report vereinen.
+    if len(labels) == 1 and is_watch_label(labels[0]):
+        build_watch_report(labels[0], out_path)
+        return
+
     if not labels:
         die("Keine Labels gefunden. Erst 'storage-bench.sh run --label <name>' ausführen "
             "oder Label(s) als Argument angeben.")

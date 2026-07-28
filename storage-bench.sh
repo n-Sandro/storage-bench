@@ -108,6 +108,8 @@ Optionen für 'watch' (Messung WÄHREND eines Umschwenks/Failovers):
 Optionen für 'report':
   [label ...]     welche Labels einbeziehen (Default: alle in results/ gefundenen)
   --out <pfad>    Ausgabedatei, Default: results/report.html
+  Hinweis: ein einzelnes watch-Label erzeugt automatisch einen eigenen
+  Zeitreihen-Report (Latenzverlauf + Stalls) statt des run/compare-Reports.
 
 Voraussetzungen (werden NICHT automatisch installiert):
   fio      (Benchmark-Tool)
@@ -601,6 +603,10 @@ cmd_watch() {
   mkdir -p "$outdir"
   echo "$start_epoch" > "${outdir}/start_epoch.txt"
   date > "${outdir}/start_time.txt"
+  # Für generate-report.py: SPIKE_THRESHOLD_MS existiert sonst nur als Shell-
+  # Variable dieses Laufs und wäre für einen späteren 'report'-Aufruf (eigener
+  # Prozess) sonst nicht mehr bekannt.
+  echo "$SPIKE_THRESHOLD_MS" > "${outdir}/spike_threshold_ms.txt"
 
   log "Start: Label='$LABEL', Dauer=${DURATION}s, Ziel=$TARGET_DIR"
   log "Wanduhr-Zeitpunkt des eigentlichen Umschwenks separat notieren (z.B. wann Failover ausgelöst wurde)."

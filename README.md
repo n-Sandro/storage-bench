@@ -251,9 +251,11 @@ ein durchgehender Messlauf ohne Lücken, plus unabhängige Ausfallerkennung.
    einen kurzen Hänger verschlucken, die Zeitreihe zeigt ihn.
 3. **Live-Status:** `--status-interval` (Default 5s) zeigt während des Laufs
    periodisch IOPS/Latenz auf dem Terminal. Da stdout hier durch `tee` läuft
-   (keine echte TTY), reicht `--status-interval` allein nicht — fio würde die
-   periodische Anzeige sonst standardmäßig unterdrücken; `--eta=always` +
-   `--eta-newline` erzwingen sie trotzdem.
+   (keine echte TTY), unterdrückt fio periodische Ausgaben standardmäßig —
+   `--eta=always` + `--eta-newline` erzwingen sie trotzdem. `--status-interval`
+   selbst wird an fio bewusst nicht übergeben: das würde bei jedem Tick einen
+   kompletten Status-Dump samt eigenem `Run status group`-Block auslösen statt
+   der schlanken Ein-Zeile-Ausgabe.
 4. **Unabhängiger Heartbeat:** parallel zu fio läuft alle `--heartbeat-interval`
    Sekunden (Default 1s) ein einzelner `dd`-Schreibtest mit `timeout`. Überschreitet
    er `--heartbeat-timeout` (Default 2s), wird ein `STALL` in `heartbeat.log`
@@ -290,13 +292,63 @@ Zeitreihe — das ist die Datei, die `analyze_watch` für die Anomalie-Timeline 
 `--write_lat_log` schreibt daneben noch `<label>_clat.1.log` und `<label>_slat.1.log`
 mit, die aber von `storage-bench.sh` selbst nicht ausgewertet werden),
 `heartbeat.log` (Puls-Protokoll), `start_epoch.txt` / `start_time.txt`
-(Referenzzeitpunkt für die Wanduhr-Umrechnung). Kein `summary.csv` — `watch` ist
-für die Anomalie-Timeline gedacht, nicht für den `report`-Vergleich.
+(Referenzzeitpunkt für die Wanduhr-Umrechnung), `spike_threshold_ms.txt` (der bei
+diesem Lauf tatsächlich verwendete `--spike-threshold`-Wert, für einen späteren
+`report`-Aufruf — siehe unten). Kein `summary.csv` — `watch` ist für die
+Anomalie-Timeline gedacht, nicht für den `report`-Vergleich.
 
 **Praxis-Tipp:** Den tatsächlichen Umschwenk-/Failover-Zeitpunkt separat notieren
 (oder `multipathd -ll` / `dmesg -w` / Storage-Array-Log parallel mitlaufen lassen)
 — die Anomalie-Timeline liefert nur die Symptome, die Korrelation mit dem Auslöser
 muss man manuell herstellen.
+
+**Beispiel-Ausgabe & Feld-Referenz**
+
+Ein typischer Lauf sieht komplett so aus (gekürzt, Werte beispielhaft):
+
+```
+[17:45:55] Start: Label='fieldtest', Dauer=8s, Ziel=/tmp
+watch: (g=0): rw=randrw, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=4
+Jobs: 1 (f=1): [m(1)][37.5%][r=76.6MiB/s,w=32.8MiB/s][r=19.6k,w=8392 IOPS][eta 00m:05s]
+...
+watch: (groupid=0, jobs=1): err= 0: pid=15376: ...
+  read: IOPS=19.6k, BW=76.5MiB/s (80.2MB/s)(612MiB/8001msec)
+    slat (nsec): min=730, max=162584, avg=4427.32, stdev=6291.27
+    clat (usec): min=14, max=917, avg=140.07, stdev=25.92
+     lat (usec): min=48, max=919, avg=144.50, stdev=25.77
+    clat percentiles (usec):
+     | 99.00th=[ 221], 99.50th=[ 243], 99.90th=[ 289], 99.99th=[ 529]
+   bw (  KiB/s): min=78048, max=79416, avg=78496.00, stdev=327.40, samples=15
+  cpu          : usr=6.53%, sys=19.23%, ctx=66579, majf=0, minf=42
+  IO depths    : 1=0.1%, 2=0.1%, 4=100.0%, ...
+     issued rwts: total=156696,67059,0,0 short=0,0,0,0 dropped=0,0,0,0
+     errors    : total=0, first_error=0/<Success>
+
+Run status group 0 (all jobs):
+   READ: bw=76.5MiB/s (80.2MB/s), io=612MiB (642MB), run=8001-8001msec
+  WRITE: bw=32.7MiB/s (34.3MB/s), io=262MiB (275MB), run=8001-8001msec
+
+Disk stats (read/write):
+  sdd: ios=154587/66173, sectors=1236696/529800, merge=0/52, ticks=18907/5752, in_queue=24666, util=88.67%
+```
+
+*Live-Tick* (`[X%][r=...][eta...]`): `X%` = Fortschritt der `--duration`, `r=`/`w=`
+= aktueller Durchsatz/IOPS **in diesem Intervall**, `eta` = Restzeit. Bricht das
+während eines Umschwenks kurz ein oder bleibt `eta` mehrere Ticks stehen, ist das
+der Live-Indikator.
+
+| Feld | Bedeutung |
+|---|---|
+| `slat` | Submission-Latenz — reiner fio/Kernel-Übergabe-Overhead, meist vernachlässigbar |
+| `clat` | Completion-Latenz — die eigentliche Storage-Latenz, das interessante Feld |
+| `lat` | `slat + clat` zusammen |
+| `clat percentiles` | z.B. `99.00th=[221]` = 99% aller Anfragen ≤221µs — aussagekräftiger als der Durchschnitt für Ausreißer |
+| `bw`/`iops` (min/max/avg/stdev/samples) | Streuung über die Sampling-Intervalle des Laufs |
+| `cpu` | Last **von fio selbst**, nicht vom Storage-Ziel |
+| `IO depths` | wie oft welche Queue-Tiefe erreicht wurde (sollte meist `--iodepth` entsprechen) |
+| `issued rwts` / `errors` | Anzahl Requests read/write/trim/sync; `errors` >0 wäre bei einem echten Failover-Fehler das erste Warnsignal (dank `--continue_on_error=all` bricht der Lauf trotzdem nicht ab) |
+| `Run status group` | Summe über alle Jobs — `io=` übertragene Datenmenge, `run=` tatsächliche Laufzeit |
+| `Disk stats` | vom Kernel, nicht von fio — `util=` = wie viel % der Zeit das Gerät aktiv war (fällt bei einem echten Stall gegen 0%) |
 
 ---
 
@@ -375,6 +427,15 @@ offline.
 per Ctrl-C mitten im Schreiben der fio-Ausgabe unterbrochen wurde) lässt den
 Report nicht abstürzen — die Datei wird mit einer Warnung auf stderr übersprungen,
 der Rest des Labels bzw. der übrigen Labels wird trotzdem ausgewertet.
+
+**`watch`-Labels:** `report <watch-label>` (genau ein Label, das mit `watch`
+erzeugt wurde) baut automatisch einen eigenständigen **Zeitreihen-Report** statt
+des obigen run/compare-Reports — eigenes Template (`report-template-watch.html`),
+weil die Datenform komplett anders ist (Latenzverlauf über Zeit statt Testarten
+im Vergleich). Zeigt Latenz (Lesen/Schreiben) als Liniendiagramm über die
+gesamte `--duration`, Heartbeat-Stalls als rot schattierte Zeitbereiche, und die
+Spike-Schwelle als gestrichelte Referenzlinie. Kein Mischen mit `run`-Labels in
+einem Aufruf.
 
 ---
 
@@ -497,7 +558,7 @@ results/
 │   ├── watch-status.log, heartbeat.log
 │   ├── <label>_lat.1.log                 ← wird von analyze_watch ausgewertet
 │   ├── <label>_clat.1.log / _slat.1.log  ← von fio mitgeschrieben, ungenutzt
-│   ├── heartbeat.log
+│   ├── spike_threshold_ms.txt            ← für einen späteren watch-`report`
 │   └── start_epoch.txt / start_time.txt
 │
 ├── compare_<a>_vs_<b>.csv                ← von `compare`
@@ -597,6 +658,15 @@ Nur relevant, wenn du den Report selbst erweitern willst.
 - **Farbskalen der Diagramme** sind logarithmisch und werden pro Diagramm
   dynamisch aus den tatsächlich vorkommenden Werten berechnet (`computeBounds()`
   im Template-JS) — kein hartkodiertes Minimum/Maximum.
+- **watch-Report** (`report-template-watch.html`) ist bewusst ein komplett
+  getrenntes, eigenständiges Template mit eigenem Datenkanal (`__WATCH_DATA__`
+  statt `__REPORT_DATA__`) — nichts oben Beschriebenes gilt dafür. Baufunktionen
+  in `generate-report.py`: `is_watch_label()` (Erkennung), `parse_latency_series()`
+  / `parse_heartbeat_stalls()` (Rohdaten einlesen), `build_watch_report()`
+  (zusammensetzen). Die y-Achse des Latenz-Charts ist ebenfalls logarithmisch,
+  aber im Template-JS selbst berechnet (fester Boden 0.01ms, Deckel = nächste
+  Zehnerpotenz über Maximalwert/Spike-Schwelle) — kein gemeinsamer Code mit
+  `computeBounds()`.
 
 ---
 
