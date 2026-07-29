@@ -143,9 +143,13 @@ validate_label() {
 # zu melden, ohne beim exakten Grenzfall selbst noch mitzuraten.
 check_free_space() {
   local dir="$1" size="$2" size_bytes avail_bytes
-  size_bytes=$(numfmt --from=iec "$size" 2>/dev/null) || die "Ungültiger --size Wert: $size"
+  if ! size_bytes=$(numfmt --from=iec "$size" 2>/dev/null); then
+    die "Ungültiger --size Wert: $size"
+  fi
   avail_bytes=$(df --output=avail -B1 "$dir" 2>/dev/null | tail -1 | tr -d ' ')
-  [ -n "$avail_bytes" ] || return 0
+  if [ -z "$avail_bytes" ]; then
+    return 0
+  fi
   if [ "$size_bytes" -gt "$avail_bytes" ]; then
     die "Zu wenig freier Platz in $dir: --size=$size (${size_bytes} Bytes) benötigt, verfügbar nur $(numfmt --to=iec "$avail_bytes") (${avail_bytes} Bytes). --size verkleinern oder anderes --target wählen."
   fi
@@ -155,8 +159,12 @@ check_free_space() {
 # werden, da ohnehin nichts ausgeführt wird).
 check_deps() {
   local missing=()
-  command -v fio >/dev/null 2>&1 || missing+=("fio")
-  command -v jq  >/dev/null 2>&1 || missing+=("jq")
+  if ! command -v fio >/dev/null 2>&1; then
+    missing+=("fio")
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    missing+=("jq")
+  fi
   if [ ${#missing[@]} -gt 0 ]; then
     log "Fehlende Abhängigkeiten: ${missing[*]}"
     log "Installation liegt bei dir, z.B.: sudo apt install ${missing[*]}"
@@ -225,10 +233,15 @@ run_fio_job() {
 # Terminal-Zusammenfassung (Menschen-lesbar, gerundet). $1 = json file, $2 = read|write.
 parse_metric() {
   local json="$1" rw="$2"
-  jq -r --arg rw "$rw" '
+  local result
+  if result=$(jq -r --arg rw "$rw" '
     .jobs[0][$rw] |
     "\((.bw/1024)|round) MB/s  \(.iops|round) IOPS  avg_lat=\((.clat_ns.mean/1000000)*100|round/100) ms  p99=\(((.clat_ns.percentile["99.000000"] // 0)/1000000)*100|round/100) ms"
-  ' "$json" 2>/dev/null || echo "n/a"
+  ' "$json" 2>/dev/null); then
+    echo "$result"
+  else
+    echo "n/a"
+  fi
 }
 
 # Rohe Zahlenwerte (unformatiert) für CSV-Export, volle Nachkommastellen erhalten
@@ -253,7 +266,9 @@ print_summary() {
   echo "=== Zusammenfassung: $(basename "$outdir") ==="
   printf '%-16s %-10s %s\n' "Test" "Richtung" "Ergebnis"
   for json in "$outdir"/*.json; do
-    [ -e "$json" ] || continue
+    if [ ! -e "$json" ]; then
+      continue
+    fi
     local name; name=$(basename "$json" .json)
     local has_read has_write
     has_read=$(jq -r '.jobs[0].read.io_bytes // 0' "$json")
@@ -273,7 +288,9 @@ print_summary() {
 # Subcommand 'run': validiert Optionen, führt die sieben fio-Teiltests
 # (seq/rand/latency/mixed) nacheinander aus und schreibt Zusammenfassung + CSV.
 cmd_run() {
-  [ -n "$LABEL" ] || die "--label ist erforderlich"
+  if [ -z "$LABEL" ]; then
+    die "--label ist erforderlich"
+  fi
   validate_label "$LABEL"
 
   # --device misst die rohe Hardware-Grenze ohne Dateisystem-Overhead (z.B. um eine
@@ -285,23 +302,35 @@ cmd_run() {
   # --confirm-destructive. Für "wie schnell ist es für meine echte Anwendung"
   # (die ja auch über ein Dateisystem läuft) ist --target die richtige Wahl.
   if [ -n "$DEVICE" ]; then
-    [ "$CONFIRM_DESTRUCTIVE" -eq 1 ] || die "--device erfordert zusätzlich --confirm-destructive (überschreibt Daten auf dem Gerät!)"
-    [ -n "$TARGET_DIR" ] && die "--target und --device schließen sich aus"
+    if [ "$CONFIRM_DESTRUCTIVE" -ne 1 ]; then
+      die "--device erfordert zusätzlich --confirm-destructive (überschreibt Daten auf dem Gerät!)"
+    fi
+    if [ -n "$TARGET_DIR" ]; then
+      die "--target und --device schließen sich aus"
+    fi
     # Letzte Sicherung gegen einen vertippten/falschen Gerätepfad, bevor es zum
     # eigentlichen (unwiderruflichen) fio-Aufruf kommt — ohne diese Prüfung würde
     # ein Tippfehler erst auffallen, wenn fio selbst mit einem kryptischeren Fehler
     # abbricht (oder schlimmer: ein falsches, aber existierendes Gerät trifft).
     if [ "$DRY_RUN" -eq 0 ]; then
-      [ -b "$DEVICE" ] || die "Kein Blockgerät gefunden: $DEVICE (Pfad prüfen — existiert es? richtiges Gerät?)"
+      if [ ! -b "$DEVICE" ]; then
+        die "Kein Blockgerät gefunden: $DEVICE (Pfad prüfen — existiert es? richtiges Gerät?)"
+      fi
     fi
   else
-    [ -n "$TARGET_DIR" ] || die "Entweder --target <dir> oder --device <dev> angeben"
+    if [ -z "$TARGET_DIR" ]; then
+      die "Entweder --target <dir> oder --device <dev> angeben"
+    fi
     if [ "$DRY_RUN" -eq 0 ]; then
-      [ -d "$TARGET_DIR" ] || die "Zielverzeichnis existiert nicht: $TARGET_DIR"
+      if [ ! -d "$TARGET_DIR" ]; then
+        die "Zielverzeichnis existiert nicht: $TARGET_DIR"
+      fi
       # Beschreibbarkeit separat prüfen (nicht nur Existenz) — sonst scheitert erst
       # fio selbst mitten im Lauf mit einer kryptischen fstat/Permission-Fehlermeldung
       # (typisch bei NFS-Freigaben mit falschen Berechtigungen/UID-Mapping).
-      [ -w "$TARGET_DIR" ] || die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+      if [ ! -w "$TARGET_DIR" ]; then
+        die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+      fi
       check_free_space "$TARGET_DIR" "$SIZE"
     fi
   fi
@@ -408,16 +437,24 @@ cmd_run() {
 # Test für Test, druckt eine Tabelle und schreibt compare_<a>_vs_<b>.csv.
 cmd_compare() {
   local label1="${1:-}" label2="${2:-}"
-  [ -n "$label1" ] && [ -n "$label2" ] || die "Verwendung: compare <label1> <label2>"
+  if [ -z "$label1" ] || [ -z "$label2" ]; then
+    die "Verwendung: compare <label1> <label2>"
+  fi
   validate_label "$label1"
   validate_label "$label2"
 
   local dir1="${RESULTS_ROOT}/${label1}"
   local dir2="${RESULTS_ROOT}/${label2}"
-  [ -d "$dir1" ] || die "Kein Ergebnis für Label '$label1' gefunden ($dir1)"
-  [ -d "$dir2" ] || die "Kein Ergebnis für Label '$label2' gefunden ($dir2)"
+  if [ ! -d "$dir1" ]; then
+    die "Kein Ergebnis für Label '$label1' gefunden ($dir1)"
+  fi
+  if [ ! -d "$dir2" ]; then
+    die "Kein Ergebnis für Label '$label2' gefunden ($dir2)"
+  fi
 
-  command -v jq >/dev/null 2>&1 || die "jq wird für 'compare' benötigt"
+  if ! command -v jq >/dev/null 2>&1; then
+    die "jq wird für 'compare' benötigt"
+  fi
 
   local csv_file="${RESULTS_ROOT}/compare_${label1}_vs_${label2}.csv"
   echo "test,direction,bw_before_MBps,bw_after_MBps,delta_pct,regression" > "$csv_file"
@@ -427,23 +464,35 @@ cmd_compare() {
   printf '%-16s %-6s %12s %12s %10s\n' "Test" "Rich." "vorher" "nachher" "Delta"
 
   for json1 in "$dir1"/*.json; do
-    [ -e "$json1" ] || continue
+    if [ ! -e "$json1" ]; then
+      continue
+    fi
     local name; name=$(basename "$json1" .json)
     local json2="${dir2}/${name}.json"
-    [ -e "$json2" ] || { log "Kein passendes Ergebnis in $label2 für $name, übersprungen"; continue; }
+    if [ ! -e "$json2" ]; then
+      log "Kein passendes Ergebnis in $label2 für $name, übersprungen"
+      continue
+    fi
 
     for rw in read write; do
       local bw1 bw2
       bw1=$(jq -r --arg rw "$rw" '.jobs[0][$rw].bw // empty' "$json1")
       bw2=$(jq -r --arg rw "$rw" '.jobs[0][$rw].bw // empty' "$json2")
-      [ -n "$bw1" ] && [ -n "$bw2" ] || continue
-      [ "$bw1" != "0" ] || continue
+      if [ -z "$bw1" ] || [ -z "$bw2" ]; then
+        continue
+      fi
+      if [ "$bw1" = "0" ]; then
+        continue
+      fi
 
       local delta_pct
       delta_pct=$(awk -v a="$bw1" -v b="$bw2" 'BEGIN { printf "%.1f", ((b-a)/a)*100 }')
 
       local flag="" is_regression="nein"
-      awk -v d="$delta_pct" 'BEGIN { exit !(d < -10) }' && { flag=" <-- REGRESSION"; is_regression="ja"; }
+      if awk -v d="$delta_pct" 'BEGIN { exit !(d < -10) }'; then
+        flag=" <-- REGRESSION"
+        is_regression="ja"
+      fi
 
       local bw1_mb bw2_mb
       bw1_mb=$(awk -v v="$bw1" 'BEGIN{printf "%.1f", v/1024}')
@@ -469,9 +518,14 @@ analyze_watch() {
   local latlog
   latlog=$(ls "${outdir}"/*_lat.*.log 2>/dev/null | head -n1 || true)
 
+  local start_time
+  if ! start_time=$(cat "${outdir}/start_time.txt" 2>/dev/null); then
+    start_time="unbekannt"
+  fi
+
   echo ""
   echo "=== Anomalie-Timeline: $(basename "$outdir") ==="
-  echo "Start des Messlaufs: $(cat "${outdir}/start_time.txt" 2>/dev/null || echo unbekannt)"
+  echo "Start des Messlaufs: $start_time"
 
   if [ -n "$latlog" ]; then
     echo ""
@@ -482,17 +536,30 @@ analyze_watch() {
       t_ms=$(echo "$t_ms" | tr -d ' ')
       lat_ns=$(echo "$lat_ns" | tr -d ' ')
       ddir=$(echo "$ddir" | tr -d ' ')
-      [ -n "$t_ms" ] && [ -n "$lat_ns" ] || continue
+      if [ -z "$t_ms" ] || [ -z "$lat_ns" ]; then
+        continue
+      fi
       if [ "$lat_ns" -gt "$thr_ns" ] 2>/dev/null; then
         found=1
         local wall_epoch=$((start_epoch + t_ms / 1000))
         local wall_str
-        wall_str=$(date -d "@${wall_epoch}" +%H:%M:%S 2>/dev/null || date -r "$wall_epoch" +%H:%M:%S 2>/dev/null || echo "?")
-        local dir_name="read"; [ "$ddir" = "1" ] && dir_name="write"; [ "$ddir" = "2" ] && dir_name="trim"
+        if ! wall_str=$(date -d "@${wall_epoch}" +%H:%M:%S 2>/dev/null); then
+          if ! wall_str=$(date -r "$wall_epoch" +%H:%M:%S 2>/dev/null); then
+            wall_str="?"
+          fi
+        fi
+        local dir_name="read"
+        if [ "$ddir" = "1" ]; then
+          dir_name="write"
+        elif [ "$ddir" = "2" ]; then
+          dir_name="trim"
+        fi
         printf '  t+%8ss  (~%s)  %-5s  lat=%s ms\n' "$((t_ms/1000))" "$wall_str" "$dir_name" "$((lat_ns/1000000))"
       fi
     done < "$latlog"
-    [ "$found" -eq 0 ] && echo "  keine Ausreißer über der Schwelle gefunden"
+    if [ "$found" -eq 0 ]; then
+      echo "  keine Ausreißer über der Schwelle gefunden"
+    fi
   else
     log "Kein Latenz-Log gefunden."
     echo "  Kommt vor, wenn der Lauf per Ctrl-C abgebrochen wurde, während fio noch offene"
@@ -505,9 +572,15 @@ analyze_watch() {
   echo "--- Stalls im Heartbeat (> ${HEARTBEAT_TIMEOUT}s ohne Antwort) ---"
   if [ -s "${outdir}/heartbeat.log" ] && grep -q STALL "${outdir}/heartbeat.log"; then
     while read -r ts status _rest; do
-      [ "$status" = "STALL" ] || continue
+      if [ "$status" != "STALL" ]; then
+        continue
+      fi
       local wall_str
-      wall_str=$(date -d "@${ts}" +%H:%M:%S 2>/dev/null || date -r "$ts" +%H:%M:%S 2>/dev/null || echo "?")
+      if ! wall_str=$(date -d "@${ts}" +%H:%M:%S 2>/dev/null); then
+        if ! wall_str=$(date -r "$ts" +%H:%M:%S 2>/dev/null); then
+          wall_str="?"
+        fi
+      fi
       printf '  %s  HEARTBEAT STALL\n' "$wall_str"
     done < "${outdir}/heartbeat.log"
   else
@@ -523,14 +596,24 @@ analyze_watch() {
 # Heartbeat-Hintergrundprozess für die Dauer eines Umschwenks/Failovers und ruft
 # danach analyze_watch() für die Anomalie-Timeline auf.
 cmd_watch() {
-  [ -n "$LABEL" ] || die "--label ist erforderlich"
+  if [ -z "$LABEL" ]; then
+    die "--label ist erforderlich"
+  fi
   validate_label "$LABEL"
-  [ -n "$TARGET_DIR" ] || die "--target <dir> ist erforderlich"
-  [ -z "$DEVICE" ] || die "'watch' unterstützt kein --device — bewusst nur Testdatei, siehe --help"
+  if [ -z "$TARGET_DIR" ]; then
+    die "--target <dir> ist erforderlich"
+  fi
+  if [ -n "$DEVICE" ]; then
+    die "'watch' unterstützt kein --device — bewusst nur Testdatei, siehe --help"
+  fi
 
   if [ "$DRY_RUN" -eq 0 ]; then
-    [ -d "$TARGET_DIR" ] || die "Zielverzeichnis existiert nicht: $TARGET_DIR"
-    [ -w "$TARGET_DIR" ] || die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+    if [ ! -d "$TARGET_DIR" ]; then
+      die "Zielverzeichnis existiert nicht: $TARGET_DIR"
+    fi
+    if [ ! -w "$TARGET_DIR" ]; then
+      die "Zielverzeichnis nicht beschreibbar: $TARGET_DIR (Berechtigungen/Mount prüfen, z.B. NFS root_squash/UID-Mapping)"
+    fi
     check_free_space "$TARGET_DIR" "$SIZE"
   fi
 
@@ -658,14 +741,20 @@ cmd_watch() {
       local_ts=$(date +%s)
       if timeout "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
         echo "${local_ts} OK"
-        [ "$prev_status" = "STALL" ] && log "Heartbeat: wieder OK — Ziel antwortet wieder"
+        if [ "$prev_status" = "STALL" ]; then
+          log "Heartbeat: wieder OK — Ziel antwortet wieder"
+        fi
         prev_status="OK"
       else
         echo "${local_ts} STALL"
-        [ "$prev_status" = "OK" ] && log "Heartbeat: STALL — kein Ping seit über ${HEARTBEAT_TIMEOUT}s"
+        if [ "$prev_status" = "OK" ]; then
+          log "Heartbeat: STALL — kein Ping seit über ${HEARTBEAT_TIMEOUT}s"
+        fi
         prev_status="STALL"
       fi
-      cpu_load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null) || cpu_load="?"
+      if ! cpu_load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null); then
+        cpu_load="?"
+      fi
       echo "${local_ts} ${cpu_load}" >> "$cpu_load_log"
       sleep "$HEARTBEAT_INTERVAL"
     done
@@ -690,7 +779,10 @@ cmd_watch() {
 }
 
 # ---- Argument-Parsing ----
-[ $# -ge 1 ] || { usage; exit 1; }
+if [ $# -lt 1 ]; then
+  usage
+  exit 1
+fi
 SUBCMD="$1"; shift
 
 case "$SUBCMD" in
@@ -736,7 +828,9 @@ case "$SUBCMD" in
     cmd_watch
     ;;
   report)
-    command -v python3 >/dev/null 2>&1 || die "python3 wird für 'report' benötigt"
+    if ! command -v python3 >/dev/null 2>&1; then
+      die "python3 wird für 'report' benötigt"
+    fi
     python3 "${SCRIPT_DIR}/generate-report.py" "$@"
     ;;
   -h|--help)
