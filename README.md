@@ -261,6 +261,14 @@ results/
 - Es ist ein echter Lastgenerator — auf geteilter/produktiver Infrastruktur `--size`/`--runtime` reduzieren, um andere Workloads nicht zu stören.
 - Maximal 8 Labels gleichzeitig im run/compare-Report (Länge der Farbpalette).
 - watch- und run-Labels lassen sich nicht in einem `report`-Aufruf mischen.
+- **`watch` per Ctrl-C abbrechen kann das Latenz-Log verlieren, wenn kurz zuvor ein echter
+  Stall auftrat:** fio (mit `libaio`/`iodepth>1`) kann beim Abbruch noch offene, langsame
+  I/O-Anfragen an das Ziel haben — trifft SIGINT fio in diesem Zustand, scheint es
+  abzubrechen, ohne seine Abschluss-Routine (die auch `--write_lat_log` schreibt)
+  durchlaufen zu lassen. Betrifft nur die Latenz-Zeitreihe; Heartbeat und CPU-Last werden
+  unabhängig davon erfasst und bleiben gültig. Bekannt, aber von uns nicht behebbar (fio-
+  internes Verhalten) — bei einem beobachteten Stall den Lauf nach Möglichkeit bis zum
+  Ende der `--duration` durchlaufen lassen, statt direkt danach abzubrechen.
 
 ---
 

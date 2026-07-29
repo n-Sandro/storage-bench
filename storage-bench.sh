@@ -494,7 +494,11 @@ analyze_watch() {
     done < "$latlog"
     [ "$found" -eq 0 ] && echo "  keine Ausreißer über der Schwelle gefunden"
   else
-    log "Kein Latenz-Log gefunden (fio evtl. abgebrochen?)"
+    log "Kein Latenz-Log gefunden."
+    echo "  Kommt vor, wenn der Lauf per Ctrl-C abgebrochen wurde, während fio noch offene"
+    echo "  I/O-Anfragen hatte (z.B. kurz nach einem Stall) -- fios eigene Abschluss-Routine,"
+    echo "  die auch das Latenz-Log schreibt, lief dann nicht mehr durch. Heartbeat und"
+    echo "  CPU-Last unten sind davon unabhängig erfasst und bleiben aussagekräftig."
   fi
 
   echo ""
