@@ -756,7 +756,19 @@ cmd_watch() {
     prev_status="OK"
     while true; do
       local_ts=$(date +%s)
-      if timeout --signal=KILL "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
+      # Als Hintergrund-Job gestartet und per "wait ... 2>/dev/null" eingesammelt
+      # statt direkt im Vordergrund per "if timeout ...; then" -- sonst druckt bash
+      # bei jedem per SIGKILL beendeten Versuch "<pid> Killed <command>" auf die
+      # eigene stderr. Diese Meldung kommt von bash selbst beim Einsammeln des
+      # Kommandos, nicht von dd/timeout -- das "> /dev/null 2>&1" AM Kommando
+      # betrifft nur dessen eigene Deskriptoren und unterdrückt sie deshalb nicht.
+      # Als Vordergrund-Kommando (auch mit "( ) 2>/dev/null" drumherum) bleibt die
+      # Meldung ebenfalls bestehen -- erst das "2>/dev/null" direkt AM "wait", das
+      # den Hintergrund-Job explizit einsammelt, fängt sie ab (empirisch geprüft).
+      # Der Exit-Code (0 bei Erfolg, 137 bei SIGKILL) bleibt für das "if" identisch.
+      timeout --signal=KILL "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1 &
+      dd_pid=$!
+      if wait "$dd_pid" 2>/dev/null; then
         echo "${local_ts} OK"
         if [ "$prev_status" = "STALL" ]; then
           log "Heartbeat: wieder OK — Ziel antwortet wieder"
