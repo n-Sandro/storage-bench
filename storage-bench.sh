@@ -706,6 +706,7 @@ cmd_watch() {
   echo "$HEARTBEAT_TIMEOUT" > "${outdir}/heartbeat_timeout_s.txt"
 
   log "Start: Label='$LABEL', Dauer=${DURATION}s, Ziel=$TARGET_DIR"
+  log "Heartbeat: alle ${HEARTBEAT_INTERVAL}s, Timeout ${HEARTBEAT_TIMEOUT}s -> STALL. Spike-Schwelle: ${SPIKE_THRESHOLD_MS}ms."
   log "Wanduhr-Zeitpunkt des eigentlichen Umschwenks separat notieren (z.B. wann Failover ausgelöst wurde)."
   log "Live-Status alle ${STATUS_INTERVAL}s unten, Abbruch mit Ctrl-C möglich (Heartbeat wird dann sauber beendet)."
 
@@ -735,11 +736,27 @@ cmd_watch() {
   # Heartbeat konnte fios Zeile mitten im Aufbau zerreißen. Für Werte, die (anders
   # als ein STALL) nicht in Echtzeit gebraucht werden, ist eine Datei ohne dieses
   # Risiko die bessere Wahl.
+  #
+  # "timeout --signal=KILL" statt des timeout-Defaults SIGTERM: Hängt der
+  # darunterliegende NFS-Mount (z.B. Server/Interface unerreichbar), blockiert
+  # der dd-Schreibversuch im Kernel in einem "TASK_KILLABLE"-Wartezustand — der
+  # sieht in ps/top wie D (uninterruptible sleep) aus, reagiert aber NUR auf
+  # SIGKILL. Ein SIGTERM (der Default von timeout) bleibt in dieser Zeit einfach
+  # anstehen und wird erst zugestellt, wenn der Syscall von selbst zurückkehrt —
+  # bei einem "hard"-NFS-Mount kann das unbegrenzt dauern (der Client gibt nie
+  # auf), bei "soft" erst nach dessen eigenem timeo/retrans-Budget. In beiden
+  # Fällen friert damit dieser komplette Loop-Durchlauf (und mit ihm cpu_load.log)
+  # für die tatsächliche Hänger-Dauer ein statt nach $HEARTBEAT_TIMEOUT
+  # abzubrechen. SIGKILL wirkt dagegen auch gegen TASK_KILLABLE sofort, egal ob
+  # hard oder soft gemountet — dd wird pünktlich zu $HEARTBEAT_TIMEOUT beendet
+  # und STALL zuverlässig zu dem konfigurierten Zeitpunkt geloggt. Betrifft nur
+  # die Wegwerf-Datei "${TESTFILE}.hb", nicht die eigentlichen fio-Testdaten —
+  # ein hartes Kill hier hat keine Nebenwirkung auf die Messung selbst.
   (
     prev_status="OK"
     while true; do
       local_ts=$(date +%s)
-      if timeout "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
+      if timeout --signal=KILL "$HEARTBEAT_TIMEOUT" dd if=/dev/zero of="${TESTFILE}.hb" bs=4k count=1 oflag=direct conv=fsync >/dev/null 2>&1; then
         echo "${local_ts} OK"
         if [ "$prev_status" = "STALL" ]; then
           log "Heartbeat: wieder OK — Ziel antwortet wieder"
